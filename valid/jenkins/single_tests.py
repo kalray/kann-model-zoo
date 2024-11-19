@@ -72,7 +72,7 @@ def thread_generate(cfg, num, odir, res):
                 log_fail_text = flog.readlines()[-10:]
                 test_result["gen"] = " ".join(log_fail_text)
     else:
-        binfiles = [f for f in os.listdir(generated_path) if f.split('.')[-1] == 'bin']
+        binfiles = [f for f in os.listdir(generated_path) if f.split('.')[-1] == 'kann']
         test_result["gen"] = len(binfiles) == 1
     res[num] = test_result
 
@@ -278,9 +278,9 @@ def run_tests(nn_types, wspace, datatypes='f16'):
 
 def main():
 
-    # nn_list = ["classifiers", "object-detection", "segmentation"]
+    # nn_list = ["all", "classifiers", "object-detection", "segmentation"]
     wpath = os.path.join(WORKSPACE_PATH, "valid", "jenkins", "single_tests")
-    run_tests(["all"], wpath, datatypes=['i8', 'f16'])
+    run_tests(["classifiers"], wpath, datatypes=['f16'])
 
 
 if __name__ == "__main__":

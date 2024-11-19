@@ -419,15 +419,15 @@ def main(generated_dir,
         sys.exit(1)
     config_file = config_files[0]
 
-    # find serialized_params_<CNN_name>.bin file in generated_dir
+    # find serialized_params_<CNN_name>.kann file in generated_dir
     params_files = glob.glob(os.path.join(
-        generated_dir, "serialized_params_*.bin"))
+        generated_dir, "*.kann"))
     if not params_files:
-        log("{}/serialized_params_<CNN_name>.bin no such file"
+        log("{}/<CNN_name>.kann no such file"
             .format(generated_dir))
         sys.exit(1)
     elif len(params_files) > 1:
-        log("Found multiple candidates for {}/serialized_params_<CNN_name>.bin"
+        log("Found multiple candidates for {}/<CNN_name>.kann"
             .format(generated_dir))
         sys.exit(1)
     serialized_params_file = params_files[0]
