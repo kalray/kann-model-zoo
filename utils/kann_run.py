@@ -48,7 +48,7 @@ def infer(all_options):
 
     # Get serialized binary file
     if os.path.isdir(options.generated_dir):
-        serialized_bin = [f for f in os.listdir(options.generated_dir) if f.split('.')[-1] == "bin"]
+        serialized_bin = [f for f in os.listdir(options.generated_dir) if f.split('.')[-1] == "kann"]
         if len(serialized_bin) != 1:
             raise RuntimeError(
                 "Something went wrong when parsing serialized binary file in {}\n"
