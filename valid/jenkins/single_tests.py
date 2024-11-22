@@ -280,8 +280,9 @@ def main():
 
     # nn_list = ["all", "classifiers", "object-detection", "segmentation"]
     wpath = os.path.join(WORKSPACE_PATH, "valid", "jenkins", "single_tests")
-    run_tests(["classifiers"], wpath, datatypes=['f16'])
+    run_tests(["all"], wpath, datatypes=['i8', 'f16'])
 
 
 if __name__ == "__main__":
     main()
+
