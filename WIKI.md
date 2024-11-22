@@ -2,11 +2,10 @@
 
 <img width="50%" src="./utils/materials/mppa-processor.jpg"></a></br>
 
-![ACE5.3.0](https://img.shields.io/badge/Coolidge2-ACE5.3.0-g)
-![ACE5.3.1](https://img.shields.io/badge/Coolidge2-ACE5.3.1-g)
-![Classifiers](https://img.shields.io/badge/Classifiers-29-blue)
-![Object-Detect](https://img.shields.io/badge/Object%20detection-31-blue)
-![Segmentation](https://img.shields.io/badge/Segmentation-10-blue)</br>
+![ACE5.4.0](https://img.shields.io/badge/Coolidge2-ACE5.4.0-g)
+![Classifiers](https://img.shields.io/badge/Classifiers-28-blue)
+![Object-Detect](https://img.shields.io/badge/Object%20detection-27-blue)
+![Segmentation](https://img.shields.io/badge/Segmentation-8-blue)</br>
 
 The KaNN™ Model Zoo repository provides a list of neural networks models __ready to compile & run__ on MPPA®
 manycore processor. This comes on top of KaNN™ tool for model generation and enhance __AI solutions__ onto Kalray
@@ -64,14 +63,14 @@ source $KANN_ENV/bin/activate
 
 Install local KaNN wheel and all dependencies (it supposed the ACE Release is installed in `$HOME` directory):
 ```bash
-pip install $HOME/ACE5.3.0/KaNN-generator/kann-5.3.0-py3*.whl
+pip install $HOME/ACE5.4.0/KaNN-generator/kann-5.4.0-py3*.whl
 ```
 
 Finally, do the same for the python requirements of the repo:
 ```bash 
 pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 ```
-Please see kalray lounge install procedure detailed at:
+Please see kalray install procedure detailed at:
 [link](https://lounge.kalrayinc.com/hc/en-us/articles/)
 
 Source your python environment:
@@ -92,6 +91,7 @@ Each model is packaged to be compiled and run for KaNN SDK. It is one DIRectory,
 Models LICENSE and SOURCES are described individually in our HuggingFace space, available at:
 https://huggingface.co/Kalray
 
+
 ## Generate a model to run on the MPPA®
 
 Use the following command to generate an model to run on the MPPA®:
@@ -101,7 +101,7 @@ Use the following command to generate an model to run on the MPPA®:
 ```
 
 It will provide you into the path directory `generated_path_dir`, here called "yolov8n":
-* a serialized binary file (network contents with runtime and context information)
+* a <my_network>.kann file (network contents with runtime and context information)
 * a network.dump.yaml file (a copy of the configuration file used)
 * a log file of the generation
 
