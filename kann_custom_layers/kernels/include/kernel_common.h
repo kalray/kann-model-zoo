@@ -90,11 +90,6 @@ inline float16_t fast_tanhf16(float16_t a) {
 
 // TANHF --
 inline float16_t _tanhf(float16_t x) {
-
-    // float16_t a = 1 + _expf(-2 * x);
-    // float16_t b = 2 / a;
-    // return b - 1;
-
     float16_t num = _expf(x) - _expf(-x);
     float16_t den = _expf(x) + _expf(-x);
     return (num * __builtin_kvx_frecw(den, ".s"));

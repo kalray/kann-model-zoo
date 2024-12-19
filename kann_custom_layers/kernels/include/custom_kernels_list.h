@@ -13,11 +13,6 @@
 // the suffix is added to the list.
 #define MPPA_CUSTOM_FOREACH_KERNELS(F)                                         \
     F(silu_x8_tf16_tf16)                                                       \
-    F(mish_x8_tf16_tf16)                                                       \
-    F(hsigmoid_tf32_tf32)                                                      \
-    F(hsigmoid_tf16_tf16)                                                      \
-    F(hsigmoid_x16_tf16_tf16)                                                  \
-
 
 #define CUSTOM_PLUS_ONE(name)  +1
 #define KANN_NB_CUSTOM_KERNELS (0 MPPA_CUSTOM_FOREACH_KERNELS(CUSTOM_PLUS_ONE))

@@ -200,11 +200,9 @@ in KaNN user manual):
 3. Implement C function into the SimpleMapping macro, provided in the example.
 4. Build C function with Kalray makefile and reuse it for inference
 
-To ensure to use all extended neural networks provided in the repository, such as YOLOv8 for 
+To ensure to use all extended neural networks provided in the repository, such as YOLOv8 for
 example the DIR `kann_custom_layers` contents the support of :
  * SiLU
- * Mish
- * HardSigmoid
 
 Please find the few steps to use it, for example YOLOv8:
 1. Configure sw environment
