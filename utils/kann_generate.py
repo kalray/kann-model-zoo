@@ -11,84 +11,30 @@ import os
 import sys
 import yaml
 import shutil
+import argparse
 import requests
 import subprocess
 
 from tqdm import tqdm
-import subprocess
-
-from kann.generate import generate
 from kann_utils import logger
-from kann_utils import build_new_model
+
 
 URL_HF_PATH = "https://huggingface.co/Kalray/"
 
+class KannHelp(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print("*" * 80)
+        print("This is a wrapper script to download model from 🤗 and generate model with kann")
+        print("> Usage: kann_generate.py <network_yaml_path> [kann_generate_args]")
+        print("*" * 80)
+        print("\n $ kann generate --help for more informations (is detailed below)\n")
+        cmd_args = ["kann", "generate", "--help"]
+        subprocess.run(cmd_args, check=True)
+        sys.exit(0)
 
-if __name__ == "__main__":
 
-    if len(sys.argv) < 2:
-        print('Usage: '+sys.argv[0]+' <yaml_file> (options)')
-        print('Called with {} args: {}'.format(len(sys.argv), ', '.join(sys.argv)))
-        exit(1)
-
-    list_args = sys.argv[1:]
-    # standardize the list of arguments
-    for i, arg in enumerate(list_args):
-        if "=" in arg:
-            list_args[i] = arg.split("=")[0]
-            list_args.insert(i + 1, arg.split("=")[1])
-
-    # check for help command
-    for i, arg in enumerate(list_args):
-        if arg.startswith("-"):
-            if "--help" in list_args or "-h" in list_args:
-                logger.info(
-                    f"\n\n"
-                    f"Usage: (generate)                                      \n"
-                    f" generate overload the command $ kann generate         \n"
-                    f" for example to download a neural network from URL     \n"
-                    f" or generate a neural network with new input shape     \n"
-                    f"                                                       \n"
-                    f" {sys.argv[0]} <yaml_file> (options)                   \n"
-                    f"                                                       \n"
-                    f" Optional arguments:                                   \n"
-                    f"     --overwrite-input-shape | -hw: new_input_size(h,w)\n"
-                    "         (i.e. -hw=640,480 to set input)                \n"
-                    f"                                                       \n"
-                    f"KaNN usage:                                            \n"
-                )
-                cmd_args = ["kann", "generate", "--help"]
-                subprocess.run(cmd_args, check=True)
-                exit(0)
-
-    yaml_file_path = sys.argv[1]
-    network_dir = os.path.dirname(yaml_file_path)
-    framework = os.path.basename(network_dir)
-
-    with open(yaml_file_path, 'r') as yaml_file:
-        cfg = yaml.load(yaml_file, Loader=yaml.Loader)
-
-    if framework.lower() == "onnx":
-        model_path = os.path.abspath(
-            os.path.join(network_dir, cfg.get('onnx_model')))
-    elif framework.lower() == "qonnx":
-        model_path = os.path.abspath(
-            os.path.join(network_dir, cfg.get('onnx_model')))
-    elif framework.lower() == "tensorflow1":
-        model_path = os.path.abspath(
-            os.path.join(network_dir, cfg.get("tensorflow_frozen_pb")))
-    elif framework.lower() == "tensorflow2":
-        model_path = os.path.abspath(
-            os.path.join(network_dir, cfg.get("tensorflow_saved_model")))
-    elif framework.lower() == "tflite":
-        model_path = os.path.abspath(
-            os.path.join(network_dir, cfg.get("tflite_file")))
-    else:
-        print(f"Unknown framework, {framework} not supported yet !")
-        sys.exit(1)
-
+def get_model_from(url, dest_dir):
     model_dir = os.path.dirname(model_path)
-    working_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     logger.info("Model requested directory: {}".format(model_dir))
     logger.info("Model requested path:      {}".format(model_path))
 
@@ -122,40 +68,42 @@ if __name__ == "__main__":
                 'migrated to Kalray HF platform. Please contact support@kalrayinc.com '
                 'to download the model.')
 
-    # iterate on each known arguments
-    list_args = sys.argv[2:]
-    for i, arg in enumerate(list_args):
-        if arg.startswith("-"):
-            if "overwrite" in arg:
-                if "--overwrite-input-shape" in list_args or "-hw" in list_args:
-                    kw = ("--overwrite-input-shape", "-hw")
-                    idx = list_args.index(kw[0]) if kw[0] in list_args else list_args.index(kw[1])
-                    if framework.lower() == "onnx":
-                        new_input_size = list_args[idx + 1]
-                        del list_args[idx + 1]
-                        del list_args[idx]
-                        # get window size to apply
-                        h, w = [int(d) for d in new_input_size.split(",")]
-                        # build new networks with input size
-                        srcDir = network_dir
-                        mDir = os.path.dirname(network_dir) + f"_{h}x{w}"
-                        dstDir = os.path.join(mDir, framework)
-                        genDir = "generated_" + os.path.basename(mDir)
-                        os.makedirs(mDir, exist_ok=True)
-                        os.makedirs(dstDir, exist_ok=True)
-                        shutil.copytree(srcDir, dstDir, dirs_exist_ok=True)
-                        cYamlPath = build_new_model(yaml_file_path, (h, w), dstDir)
-                        logger.info(f'** New model at: {cYamlPath} ** \n')
-                        yaml_file_path = cYamlPath
-                    else:
-                        logger.warning(f"--overwrite-input-shape not supported for {framework}")
-                        raise NotImplementedError
-                else:
-                    logger.warning(f"{arg} not recognized, do you mean (--overwrite-input-shape, or -hw)?")
-                    sys.exit(1)
-            # then add arguments --
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("network_yaml_path", help="Model YAML path")
+    parser.add_argument("--help", action=KannHelp, nargs=0,)
+    parser.add_argument(
+        "--use-nfs", action="store_true",
+        help="use interal url path, located on nfs (ACI and/or internal use only)")
+    parser.add_argument("--debug", action="store_true", help="Run generation with kaNN python API")
+
+    args, other_args = parser.parse_known_args()
+    print(args)
+    yaml_file_path = args.network_yaml_path
+    network_dir = os.path.dirname(yaml_file_path)
+    with open(yaml_file_path, 'r') as yaml_file:
+        cfg = yaml.load(yaml_file, Loader=yaml.Loader)
+
+    # check framework used
+    framework = cfg.get('framework')
+    if framework.lower() == "onnx":
+        model_path = os.path.abspath(
+            os.path.join(network_dir, cfg.get('onnx_model')))
+    else:
+        print(f"Unknown framework, {framework} not supported !")
+        sys.exit(1)
+
+    # Check if model exists
+    if not os.path.isfile(model_path):
+        get_model_from(URL_HF_PATH, model_path)
 
     # Finally generate
-    cmd_args = ["kann", "generate", yaml_file_path] + list_args
-    subprocess.run(cmd_args, check=True)
-    # generate(yaml_file_path, dest_dir="./test")
+    if args.debug:
+        import kann
+        kann.commons.log_utils.initialize("debug")
+        kann.generate(yaml_file_path, dest_dir="test", log_smem_alloc=True, generate_txt_cmds=True, force=True)
+    else:
+        cmd_args = ["kann", "generate", yaml_file_path] + other_args
+        subprocess.run(cmd_args, check=True)

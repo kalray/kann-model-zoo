@@ -15,7 +15,6 @@ import onnxsim
 import logging
 import argparse
 import subprocess
-import onnx_graphsurgeon as gs
 
 
 class cFormatter(logging.Formatter):
@@ -62,7 +61,7 @@ def get_mppa_frequency():
     return mppa_freq_hz
 
 
-def eval_env(bin_file, pocl_file, arch='kv3-1'):
+def eval_env(bin_file, pocl_file, arch):
 
     """ Evaluate HW and SW environment """
 
@@ -70,6 +69,7 @@ def eval_env(bin_file, pocl_file, arch='kv3-1'):
     logger.info('---------------------------')
     logger.info(' Evaluating HW environment:')
     logger.info('---------------------------')
+    status = "\U00002705"
     try:
         with open('/mppa/board0/archver', 'r') as f_hw:
             hw_arch_version = str(f_hw.readlines()[0]).rstrip()
@@ -81,19 +81,17 @@ def eval_env(bin_file, pocl_file, arch='kv3-1'):
             hw_board_serial = str(f_hw.readlines()[0]).rstrip()
         with open('/mppa/version', 'r') as f_hw:
             hw_driver = str(f_hw.readlines()[0]).rstrip()
-
         clusters_freq = numpy.array(get_mppa_frequency()) / 1e6
 
-        stat = "\U00002705"
-        if hw_arch_version not in arch:
-            stat = "\U0000274C"
+        if hw_arch_version != arch:
+            status = "\U0000274C"
             logger.warning(
                 f"\U0000274C Mismatch HW ARCH revision ({hw_arch_version})"
                 f" with ARCH to benchmark ({arch}), RUN is disabled")
-        logger.info(f"[{stat}] HW revision found: {hw_arch_version}")
-        logger.info(f"[{stat}] HW board :         {hw_board_type}-rev{hw_board_rev} | {hw_board_serial}")
-        logger.info(f"[{stat}] Driver version:    {hw_driver}")
-        logger.info(f"[{stat}] Cluster freq (MHz): {clusters_freq}")
+        logger.info(f"[{status}] HW revision found:  {hw_arch_version}")
+        logger.info(f"[{status}] HW board :          {hw_board_type}-rev{hw_board_rev} | {hw_board_serial}")
+        logger.info(f"[{status}] Driver version:     {hw_driver}")
+        logger.info(f"[{status}] Cluster freq (MHz): {clusters_freq}")
 
     except Exception as err:
         logger.error(
@@ -106,61 +104,45 @@ def eval_env(bin_file, pocl_file, arch='kv3-1'):
     logger.info(' Evaluating SW environment:')
     logger.info('---------------------------')
 
-    stat = "\U00002705"
-
-    if os.environ.get('KALRAY_TOOLCHAIN_DIR') is None:
+    toolchain_dir = os.environ.get("KALRAY_TOOLCHAIN_DIR")
+    if toolchain_dir is None:
         msg = 'KALRAY_TOOLCHAIN_DIR env is undefined, please source Kalray(R) toolchain dir'
         logger.error(msg)
         raise RuntimeError(msg)
-
     if not os.path.isfile(bin_file):
-        stat = "\U0000274C"
-        logger.warning("[{}] Binary file:   {}".format(stat, bin_file))
+        status = "\U0000274C"
+        logger.warning("[{}] Binary file:   {}".format(status, bin_file))
         raise RuntimeError('>> {} is not found'.format(bin_file))
     else:
-        logger.info("[{}] Binary file:   {}".format(stat, bin_file))
+        logger.info("[{}] Binary file:   {}".format(status, bin_file))
 
     if not os.path.isfile(pocl_file):
-        stat = "\U0000274C"
-        logger.warning("[{}] Kernel file:  {}".format(stat, pocl_file))
+        status = "\U0000274C"
+        logger.warning("[{}] Kernel file:  {}".format(status, pocl_file))
         raise RuntimeError('>> {} is not found'.format(pocl_file))
     else:
-        logger.info("[{}] Kernel file:   {}".format(stat, pocl_file))
+        logger.info("[{}] Kernel file:   {}".format(status, pocl_file))
 
-    toolchain_dir = os.environ.get("KALRAY_TOOLCHAIN_DIR")
-    cmd = [os.path.join(toolchain_dir, "bin", "kvx-mppa"), "--version"]
-    with open(".kvx-mppa.version", "w+") as f:
-        subprocess.run(cmd, stdout=f, stderr=f)
-    with open(".kvx-mppa.version", "r") as f:
-        log = f.readlines()
-
-    kvx_version = None
-    for l in log:
-        if "version" in l.lower():
-            kvx_version = l.split("\t")[-1].rstrip()
     try:
         import kann
     except ImportError as err:
         logger.error('>> \U0000274C KaNN(tm) must be referenced into '
-                     'your environment, please use "kann-install"\n'
-                     '   and then source the python env : '
-                     '$ source $HOME/.local/share/kann/venv*/bin/activate')
+                     'your python environment, please source your python env.\n'
+                     'and use pip to install KaNN wheel as described in the doc')
         raise RuntimeError(err)
 
-    stat = "\U00002705"
-    if kann.__version__ not in kvx_version:
-        stat = "\U0000274C"
-        logger.warning(
-            f"\U0000274C Mismatch HW ARCH revision ({hw_arch_version})"
-            f" with ARCH to benchmark ({arch}), RUN is disabled")
-
-    logger.info("[{}] KVX toolchain: {} - {}".format(stat, toolchain_dir, kvx_version))
-    logger.info("[{}] KaNN(TM) :     {} - {}".format(stat,
+    ace_p = subprocess.run(["pkg-config", "--modversion", "kalray-ace"],  capture_output=True)
+    ace_version = f"{ace_p.stdout.decode('utf-8')}".rstrip("\n")
+    logger.info("[!!] ACE release :  {} - {}".format(toolchain_dir, ace_version))
+    logger.info("[!!] KaNN(TM) :     {} - {}".format(
         os.path.dirname(kann.__file__), kann.__version__))
     logger.info('---------------------------')
 
 
 def set_winsize(onnxPath, hw=(224, 224), oPath=None):
+
+    import onnx_graphsurgeon as gs
+
     onnxRelativePath = os.path.realpath(onnxPath)
     onnxModel = onnx.load(onnxRelativePath)
     g = gs.import_onnx(onnxModel)
@@ -189,6 +171,7 @@ def set_winsize(onnxPath, hw=(224, 224), oPath=None):
     onnx.checker.check_model(optModel)
     if oPath is None:
         oPath = f"model.optimized.{hw[0]}x{hw[1]}.onnx"
+    os.makedirs(os.path.dirname(oPath), exist_ok=True)
     onnx.save(optModel, oPath)
     return oPath
 

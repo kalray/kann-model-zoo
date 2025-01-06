@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###
-# Copyright (C) 2024 Kalray SA. All rights reserved.
+# Copyright (C) 2025 Kalray SA. All rights reserved.
 # This code is Kalray proprietary and confidential.
 # Any use of the code for whatever purpose is subject
 # to specific written permission of Kalray SA.
@@ -20,7 +20,6 @@ import time
 import traceback
 import queue
 
-from screeninfo import get_monitors
 import click
 import cv2
 import numpy as np
@@ -31,7 +30,7 @@ def log(msg):
     print("[KaNN Demo] " + msg)
 
 
-class SourceReader:
+class SourceReader(object):
     def __init__(self, source, replay):
         self.source = source
         self.replay = replay
@@ -50,6 +49,8 @@ class SourceReader:
             self._thread = threading.Thread(target=self._decode_camera)
         else:
             self._thread = threading.Thread(target=self._decode_file)
+
+    def start_decode(self):
         self._thread.start()
 
     def get_frame(self):
@@ -100,16 +101,16 @@ class SourceReader:
 
 
 def getTiledWindowsInfo():
-    monitors = get_monitors()
-    if len(monitors) == 0:
-        print("No display detected.\n")
-        return None
-    else:
-        monitor = monitors[0]
-        print("Several display detected, using the first one: H={}, W={}\n"
-              .format(monitor.height, monitor.width))
+    from screeninfo import get_monitors
+    try:
+        monitor = get_monitors()[0]
+        log("Several display detected, using the first one: H={}, W={}\n"
+            .format(monitor.height, monitor.width))
         return {"size": {'h': monitor.height, 'w': monitor.width},
                 "pos": {'x': 0, 'y': 0}}
+    except:
+        log("[WARNING] ** Screen or Display has not been found **\n")
+        return None
 
 
 def draw_text(frame, lines, pos):
@@ -144,6 +145,7 @@ def show_frame(window_name, frame):
         return False  # escape key
     return True
 
+
 def array_from_fifo(fd, dtype, count):
     nb_bytes = np.dtype((dtype, count)).itemsize
     buf = b''
@@ -172,28 +174,34 @@ def read_kann_output(kann_out, batching):
             raise Exception("Reading of {} values in {} format from {} failed".format(size, dtype.__name__, name))
     return data
 
+
 def run_demo(
-        config:dict,
-        generated_dir:str,
+        config : dict,
+        generated_dir : str,
         src_reader,
-        fifos_in:dict,
-        fifos_out:dict,
+        fifos_in : dict,
+        fifos_out : dict,
         window_info,
-        batching_:bool = False,
-        display:bool = True,
-        out_video:bool = False,
-        out_img_path:str = None,
-        verbose:bool = False
+        batching : bool = False,
+        display : bool = True,
+        out_video : bool = False,
+        out_img_path : str = None,
+        verbose : bool = False
     ):
     """
-    @param config   Content of <network>.yaml file.
-    @param src_reader SourceReader object abstracting the source type and
-                      replay mode.
-    @param fifos_in The name of the fifo to use as input of kann.
-    @param fifos_out The name of the fifo to use as output of kann.
-    @param batching The batch size
-    @param display  Enable graphical display of processed frames.
-    @return         The number of frames processed.
+    @param config         Content of <network>.yaml file.
+    @param generated_dir  Generated dir from KaNN
+    @param src_reader     SourceReader object abstracting the source type and
+                          replay mode.
+    @param fifos_in       The name of the fifo to use as input of kann.
+    @param fifos_out      The name of the fifo to use as output of kann.
+    @param window_info    Information about the avaialble screens provided by screeninfo
+    @param batching       The batch size of the neural network
+    @param display        Enable graphical display of processed frames.
+    @param out_video      Write into an output file the video stream
+    @param out_img_path   Write into an output file the last frame processed
+
+    @return               The number of frames processed.
     """
     # read the classes file, parser of classes file is done in output_preparator
     with open(config['classes_file'], 'r') as f:
@@ -213,8 +221,6 @@ def run_demo(
 
     if isinstance(config['forced_batch_size'], int):
         batching = config['forced_batch_size']
-    else:
-        batching = batching_
 
     # Open the fifo to interact with kann
     # Ordered to keep the alphabetical order
@@ -252,19 +258,22 @@ def run_demo(
     nframes = int(src_reader.cap.get(cv2.CAP_PROP_FRAME_COUNT))
     t = [0] * 8
     frames_counter = 0
-    frame = prev_frame = None
-    out = None
-    while True:
-        t[0] = time.perf_counter() # CATCH FRAME ###############################
+    frame = None
 
+    src_reader.start_decode()
+
+    while True: # infinite loop
+
+        # CATCH FRAME ############################
+        t[0] = time.perf_counter()
         prev_frame = frame
         frame = src_reader.get_frame()
         if frame is None:
             break
         frames_counter += 1
 
-        t[1] = time.perf_counter() # PRE-PROCESS FRAME #########################
-
+        # PRE-PROCESS FRAME ######################
+        t[1] = time.perf_counter()
         # For now, we are supporting multiple input, but only one source per
         # instance, thus the input preparator prepare all the inputs base on one
         # source.
@@ -274,8 +283,8 @@ def run_demo(
             prepared = [prepared]
         assert len(prepared) == len(kann_in)
 
-        t[2] = time.perf_counter() # SEND TO KANN RUNTIME ######################
-
+        # SEND TO KANN RUNTIME ###################
+        t[2] = time.perf_counter()
         # Risky since we can't ensure the order that the input preparator output
         # the data in the same order that alphabetical order.
         # TODO : Manage input and sources
@@ -285,48 +294,53 @@ def run_demo(
                 "but {} is expected".format(p.dtype, i['dtype'].__name__)
             p.tofile(i['fifo'], '')
 
-        t[3] = time.perf_counter() # READ PROCESSED FRAME ##################
+        # READ PROCESSED FRAME ####################
+        t[3] = time.perf_counter()
         out = read_kann_output(kann_out, batching)
 
-        t[4] = time.perf_counter() # POST-PROCESS FRAME ####################
+        # POST-PROCESS FRAME ######################
+        t[4] = time.perf_counter()
         frame = output_preparator.post_process(
             config, frame, out, device='mppa', dbg=verbose)
 
-        t[5] = time.perf_counter()  # ANNOTATE FRAME #######################
-        annotate_frame(frame, t[4] - t[3], config['name'])  # FPS: KaNN
+        # ANNOTATE FRAME ##########################
+        t[5] = time.perf_counter()
+        annotate_frame(frame, t[4] - t[3], config['name'])
 
-        t[6] = time.perf_counter()  # DISPLAY FRAME ########################
-        if display:
-            if not show_frame(window_name, frame):
-                break
+        # DISPLAY FRAME ###########################
+        t[6] = time.perf_counter()
+        if display and not show_frame(window_name, frame):
+            break
 
-        t[7] = time.perf_counter() # END ###################################
+        # PRINT TIMINGS ###########################
+        t[7] = time.perf_counter()
         log("frame:{}/{}\tread: {:0.2f}ms\tpre: {:0.2f}ms\tsend: {:0.2f}ms\t"
             "kann: {:0.2f}ms\tpost: {:0.2f}ms\tdraw: {:0.2f}ms\t"
             "show: {:0.2f}ms\ttotal: {:0.2f}ms ({:0.1f}fps, kann:{:0.1f}fps)".format(
-            frames_counter + 1, nframes,
+            frames_counter, nframes,
             1000*(t[1]-t[0]),  # read (ms)
             1000*(t[2]-t[1]),  # preprocessing (ms)
             1000*(t[3]-t[2]),  # send data to pipe (ms)
             1000*(t[4]-t[3]),  # kann + read data from pipe (ms)
             1000*(t[5]-t[4]),  # post processing (ms)
             1000*(t[6]-t[5]),  # annotate frame (ms)
-            1000*(t[7]-t[6]),  # show frame + post processed predictions (ms)
+            1000*(t[7]-t[6]),  # show frame (ms)
             1000*(t[7]-t[0]),  # total (ms)
             1. / (t[7]-t[0]),  # total (fps)
             1. / (t[4]-t[3]))  # kann + read data from pipe (fps)
         )
 
+        # END #####################################
         if out_video is not None:
             out_video.write(frame)
-
+        # end of while loop
     if display:
         cv2.destroyWindow(window_name)
-        cv2.waitKey(1) # pump all events, avoid bug in opencv where windows are not properly closed
+        cv2.waitKey(1)  # pump all events, avoid bug in opencv where windows are not properly closed
     if out_img_path:
         cv2.imwrite(out_img_path, prev_frame)
         log(f"Last frame has been saved to: {out_img_path}")
-    # close the input, to initiate the terminaison sequence in kann
+    # close the FIFOs, to initiate the terminaison sequence in kann
     for i in kann_in.values():
         i['fifo'].close()
     for o in kann_out.values():
@@ -497,7 +511,6 @@ def main(generated_dir,
     kann_proc = None
     try:
         log("Temporary directory for the fifos is {}".format(fifos_dir))
-
         if os.path.exists(fifos_dir):
             shutil.rmtree(fifos_dir)
 
@@ -537,9 +550,11 @@ def main(generated_dir,
         os.environ["OPENCV_OPENCL_RUNTIME"] = "null"
         kann_proc = Popen(kann_args, bufsize=-1,
             env=dict(os.environ, KANN_POCL_FILE=os.path.join(kernel_binaries_dir, "mppa_kann_opencl.cl.pocl")))
+
         # Manage window position and size
-        window_info = None if no_display else getTiledWindowsInfo()
-        assert (no_display or window_info is not None)
+        window_info = getTiledWindowsInfo()
+        if window_info is None:
+            no_display = True
 
         # run demo
         run_demo(
@@ -554,12 +569,14 @@ def main(generated_dir,
             out_video,
             out_img_path,
             verbose)
+
     except Exception as e:
         log("ERROR:\n" + traceback.format_exc())
+
     finally:
         # make sure we kill kann no matter what happens
-        # (most of the time: videofile unexpectedly closed, or
-        # kann took more than 2s to terminate after we closed kann_fifo_in)
+        # most of the time: videofile unexpectedly closed, or
+        # kann took more than 2s to terminate after we closed kann_fifo_in
         if save_video:
             out_video.release()
             log("Output has been save to {}".format(out_video_path))

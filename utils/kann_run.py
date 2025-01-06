@@ -1,61 +1,38 @@
 #! /usr/bin/env python3
 
 ###
-# Copyright (C) 2024 Kalray SA. All rights reserved.
+# Copyright (C) 2025 Kalray SA. All rights reserved.
 # This code is Kalray proprietary and confidential.
 # Any use of the code for whatever purpose is subject
 # to specific written permission of Kalray SA.
 ###
 
 import os
+import sys
 import yaml
 import numpy
-import shutil
 import argparse
-import tempfile
 import subprocess
 
 from kann_utils import (
-    build_new_model,
-    generate_raw_input,
     logger,
     eval_env,
     get_mppa_frequency
 )
 
 
+class KannRunHelp(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        cmd_args = ["kann", "run", "--help"]
+        subprocess.run(cmd_args)
+        sys.exit(0)
+
+
 def infer(all_options):
 
     options = all_options[0]
     pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
-
-    # Generate IO dir for inference (custom or randoms)
-    if options.data_path is not None and os.path.isdir(options.data_path):
-        iodir = f"{os.path.basename(args.generated_dir)}_custom_io"
-        if os.path.exists(iodir):
-            shutil.rmtree(iodir)
-        shutil.copytree(options.data_path, iodir)
-    else:
-        iodir = tempfile.mkdtemp()
-        logger.info("Generating IO dir into {}".format(iodir))
-        generate_raw_input(
-            os.path.join(options.generated_dir, "network.dump.yaml"),
-            iodir, nb_frames=options.nb_frames, data=options.data)
-        if options.data_path is not None:
-            logger.warning(f"[!] {options.data_path} is a wrong path, random data has been generated instead")
-        options.data_path = None
-    logger.info(f"[+] Inputs/Outputs directory is located to {iodir}")
-
-    # Get serialized binary file
-    if os.path.isdir(options.generated_dir):
-        serialized_bin = [f for f in os.listdir(options.generated_dir) if f.split('.')[-1] == "kann"]
-        if len(serialized_bin) != 1:
-            raise RuntimeError(
-                "Something went wrong when parsing serialized binary file in {}\n"
-                "    continuing ... ".format(options.generated_dir))
-    else:
-        raise RuntimeError("Network path {} is not a valid directory".format(options.generated_dir))
-    serialized_bin_file = os.path.join(options.generated_dir, serialized_bin[0])
+    os.environ["KANN_POCL_FILE"] = pocl_file
 
     # Generate inference log file path
     i = 0
@@ -67,21 +44,32 @@ def infer(all_options):
     inference_log_path = _inference_log_path
 
     # Generate command to run
-    cmd = [args.bin_file, serialized_bin_file, iodir]
+    infer_p = None
+    print(all_options[1])
+    cmd_args = ["kann", "run", options.generated_dir] + all_options[1]
     try:
-        print("Running: {}".format(" ".join(cmd)))
-        with open(inference_log_path, "w+") as inference_log:
-            subprocess.run(
-                cmd,
-                stdout=inference_log,
-                stderr=inference_log,
-                env=dict(os.environ, KANN_POCL_FILE=pocl_file),
-                check=True, timeout=30.)
-        logger.info("Done")
+        logger.info("Running: {}".format(" ".join(cmd_args)))
+        infer_p = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        subprocess.run(
+            ["tee", inference_log_path],
+            stdin=infer_p.stdout,
+            check=True
+        )
+        infer_p.wait()
+        if infer_p.returncode != 0:
+            with open(inference_log_path, "r") as inference_log:
+                ilog = inference_log.readlines()
+            [logger.error(l.rstrip("\n")) for l in ilog]
+            raise RuntimeError("Inference aborted")
+    except Exception as e:
+        raise RuntimeError(e)
     finally:
-        with open(inference_log_path, "r") as inference_log:
-            print(" ".join(inference_log.readlines()))
-        logger.info("Log is available at {}".format(inference_log_path))
+        if isinstance(infer_p, subprocess.Popen):
+            infer_p.terminate()
+            logger.info("Log is available at {}".format(inference_log_path))
 
     with open(inference_log_path, "r") as inference_log:
         ilog = inference_log.readlines()
@@ -96,18 +84,18 @@ def infer(all_options):
     perf_host_ms = []
     mean_perf_mppa_cycles = None
 
-    MPPA_FREQ_KHZ = get_mppa_frequency()[0] / 1e3
-
-    logger.info(f"***********************************")
-    logger.info(f"DATA EXTRACTED FROM INFERENCE LOG:")
-    logger.info(f"***********************************")
     for line in ilog:
         if line.startswith("Total: "):
             mean_perf_mppa_cycles = int(line.split(" ")[1])
         if line.startswith("[app][host] Performance of frame "):
             perf_host_qps.append(float(line.split(" ")[-2]))
             perf_host_ms.append(float(line.split(" ")[5]))
+    logger.info(f"***********************************")
     if len(perf_host_qps) > 0:
+        MPPA_FREQ_KHZ = get_mppa_frequency()[0] / 1e3
+        MPPA_FREQ_GHZ = MPPA_FREQ_KHZ / 1e6
+        logger.info(f"DATA EXTRACTED FROM INFERENCE LOG:")
+        logger.info(f"***********************************")
         logger.info(f"Batch size / query: {str(fbs):>7s}")
         logger.info(f"Number of queries:  {str(len(perf_host_ms)):>7s}")
         logger.info(f"PERF HOST (ms):     {str(round(numpy.mean(perf_host_ms), 2)):>7s} ms")
@@ -115,27 +103,27 @@ def infer(all_options):
         logger.info(f"PERF HOST (fps):    {str(round(fbs * numpy.mean(perf_host_qps), 2)):>7s} fps")
     else:
         logger.info("No perf metrics from host")
+    logger.info(f"***********************************")
     if mean_perf_mppa_cycles:
-        logger.info(f"PERF DEVICE (ms):   {str(round(mean_perf_mppa_cycles / MPPA_FREQ_KHZ, 2)):>7s} ms")
-        logger.info(f"PERF DEVICE (qps):  {str(round(1e3 * MPPA_FREQ_KHZ / mean_perf_mppa_cycles, 2)):>7s} qps")
-        logger.info(f"PERF DEVICE (fps):  {str(round(fbs * (1e3 * MPPA_FREQ_KHZ) / mean_perf_mppa_cycles, 2)):>7s} fps")
+        logger.info(f"PERF DEVICE (cycles): {mean_perf_mppa_cycles:,d} c")
+        perf_device_ms = round(mean_perf_mppa_cycles / MPPA_FREQ_KHZ, 3)
+        logger.info(f"PERF DEVICE (ms):     {str(perf_device_ms):>7s} ms  @ {MPPA_FREQ_GHZ:.2f} GHz")
+        perf_device_qps = round(1e3 * MPPA_FREQ_KHZ / mean_perf_mppa_cycles, 3)
+        logger.info(f"PERF DEVICE (qps):    {str(perf_device_qps):>7s} qps @ {MPPA_FREQ_GHZ:.2f} GHz")
+        perf_device_fps =round(fbs * (1e3 * MPPA_FREQ_KHZ) / mean_perf_mppa_cycles, 3)
+        logger.info(f"PERF DEVICE (fps):    {str(perf_device_fps):>7s} fps @ {MPPA_FREQ_GHZ:.2f} GHz")
     else:
         logger.info("No perf metrics from MPPA")
     logger.info(f"***********************************")
-
-    if options.data_path is None:
-        logger.info("Removing IO dir {}".format(iodir))
-        shutil.rmtree(iodir)
-    else:
-        logger.info(f"[!] IO are available here: {iodir}")
     logger.info("Done")
 
 
 def demo(all_options):
     options = all_options[0]
 
-    pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
     if options.device == "mppa":
+        pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
+        os.environ["KANN_POCL_FILE"] = pocl_file
         python_script = "kann_video_demo.py"
         python_script = os.path.abspath(
             os.path.join(os.path.dirname(__file__), python_script))
@@ -151,10 +139,8 @@ def demo(all_options):
         if options.no_display:
             cmd_args += [f"--no-display"]
         cmd_args += all_options[1]
-        print(f"Running: {' '.join(cmd_args)}\n")
-        subprocess.run(cmd_args, check=True)
 
-    if options.device == "cpu":
+    elif options.device == "cpu":
         python_script = "cpu_video_demo.py"
         python_script = os.path.abspath(
             os.path.join(os.path.dirname(__file__), python_script))
@@ -169,8 +155,37 @@ def demo(all_options):
         if options.no_display:
             cmd_args += [f"--no-display"]
         cmd_args += all_options[1]
-        print(f"Running: {' '.join(cmd_args)}\n")
-        subprocess.run(cmd_args, check=True)
+
+    else:
+        raise NotImplementedError(f"Device {options.device} not supported")
+
+    # Generate inference log file path
+    i = 0
+    inference_log_path = f"demo_{options.device}_{os.path.basename(options.generated_dir)}.log"
+    _inference_log_path = inference_log_path
+    while os.path.exists(_inference_log_path):
+        _inference_log_path = inference_log_path.replace(".log", "") + f"_{i}.log"
+        i += 1
+    inference_log_path = _inference_log_path
+
+    # Run proc kann_opencl_cnn using tee
+    infer_p =  None
+    try:
+        logger.info("Running: {}".format(" ".join(cmd_args)))
+        infer_p = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        subprocess.run(
+            ["tee", inference_log_path],
+            stdin=infer_p.stdout,
+        )
+        infer_p.wait()
+        logger.info("Done")
+    finally:
+        if isinstance(infer_p, subprocess.Popen):
+            infer_p.terminate()
+            logger.info("Log is available at {}".format(inference_log_path))
 
 
 if __name__ == "__main__":
@@ -179,23 +194,14 @@ if __name__ == "__main__":
 
     infer_subparser = subparsers.add_parser(
         name="infer",
-        help="Run inference on raw or custom data from kann_opencl_cnn or custom binary")
+        help="Run inference on raw or custom data from kann_opencl_cnn or custom binary",
+        add_help=False
+    )
+    infer_subparser.add_argument(
+        "--help", "-h", action=KannRunHelp, nargs=0,)
     infer_subparser.add_argument(
         "generated_dir", default=str(),
         help="Provide the path of generated DIR by KaNN")
-    infer_subparser.add_argument(
-        "--data", default="zeros", choices=["zeros", "random", "ones"],
-        help="Provide data type to generate")
-    infer_subparser.add_argument(
-        "--data-path", type=str,
-        help="Provide data path if custom data to analyze")
-    infer_subparser.add_argument(
-        "--force-hw", type=str, default=None,
-        help="Force the input window size (H, W) of the initial generated DIR, save "
-             "it in a DIRECTORY then do inference")
-    infer_subparser.add_argument(
-        "--nb-frames", "-n", default=10, type=int,
-        help="Provide number of frame to generate")
     infer_subparser.set_defaults(func=infer)
 
     demo_subparser = subparsers.add_parser(
@@ -242,42 +248,38 @@ if __name__ == "__main__":
 
     args.generated_dir = os.path.abspath(args.generated_dir)
     if not os.path.isdir(args.generated_dir):
-        logger.warning("Targeted generated_dir to run must be a DIR")
+        logger.warning(f"Targeted generated_dir to run must be a DIR, get {args.generated_dir}")
         raise RuntimeError
     if not os.path.isfile(os.path.join(args.generated_dir, "network.dump.yaml")):
         logger.warning("Targeted generated_dir DIR to run must content the configuration dump file (network.dump.yaml)")
         raise RuntimeError
 
-    if hasattr(args, "force_hw") and args.force_hw is not None:
-        args.force_hw = args.force_hw.split(",")
-        assert len(args.force_hw) == 2
-        assert isinstance(args.force_hw, (tuple, list))
-        if os.path.isdir(args.generated_dir):
+    if not "device" in args or args.device == "mppa":
+        if args.disable_l2_cache:
+            args.enable_l2_cache = False
+            os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l1.elf"
+        elif args.enable_l2_cache:
+            os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l2_d_1m.elf"
 
-            # get window size to apply
-            h, w = [int(d) for d in args.force_hw]
-            # build new networks with input size
-            mDir = args.generated_dir + f"_{h}x{w}"
-            genDir = mDir + "_gen"
-            os.makedirs(mDir, exist_ok=True)
-            shutil.copytree(args.generated_dir, mDir, dirs_exist_ok=True)
-            cYamlPath = build_new_model(args.generated_dir, (h, w), mDir)
-            # Then, generate with KaNN
-            cmd_args = ["kann", "generate", cYamlPath, "-d", genDir, "--force"]
-            logger.info("Running: {}".format(" ".join(cmd_args)))
-            subprocess.run(cmd_args, check=True)
-            args.generated_dir = genDir
-            logger.info('** Done ** \n')
+        if args.bin_file is None:
+            if os.environ.get('KALRAY_TOOLCHAIN_DIR', None) is not None:
+                args.bin_file = os.path.join(os.environ.get('KALRAY_TOOLCHAIN_DIR'), "bin", "kann_opencl_cnn")
+            else:
+                logger.warning("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
+                raise RuntimeError
+        if args.pocl_dir is None:
+            if os.environ.get('KALRAY_TOOLCHAIN_DIR', None) is not None:
+                toolchain_dir = os.environ.get('KALRAY_TOOLCHAIN_DIR')
+                args.pocl_dir = os.path.join(toolchain_dir, f"kvx-cos/lib/kv3-2/KAF/services/")
+            else:
+                logger.warning("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
+                raise RuntimeError
+        else:
+            args.pocl_dir = os.path.abspath(args.pocl_dir)
+        pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
 
-    if args.disable_l2_cache:
-        args.enable_l2_cache = False
-    if args.disable_l2_cache:
-        os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l1.elf"
-    elif args.enable_l2_cache:
-        os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l2_d_1m.elf"
-
-    with open(os.path.join(args.generated_dir, "network.dump.yaml"), 'r') as yaml_file:
-        cfg = yaml.load(yaml_file, Loader=yaml.Loader)
+        with open(os.path.join(args.generated_dir, "network.dump.yaml"), 'r') as yaml_file:
+            cfg = yaml.load(yaml_file, Loader=yaml.Loader)
         generate_options = cfg.get('generate_options')
         if generate_options is not None:
             data_buffer_size = generate_options.get('data_buffer_size', 6240000)
@@ -294,26 +296,6 @@ if __name__ == "__main__":
             elif data_buffer_size > 7600000:
                 logger.warning(f"Data_buffer_size is set to {data_buffer_size} which")
                 logger.warning(f"is not optimal for Coolidge2 (SMEM:8MB / kvx-clusters)")
-
-    if args.bin_file is None:
-        if os.environ.get('KALRAY_TOOLCHAIN_DIR', None) is not None:
-            args.bin_file = os.path.join(os.environ.get('KALRAY_TOOLCHAIN_DIR'), "bin", "kann_opencl_cnn")
-        else:
-            logger.warning("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
-            raise RuntimeError
-    if args.pocl_dir is None:
-        if os.environ.get('KALRAY_TOOLCHAIN_DIR', None) is not None:
-            toolchain_dir = os.environ.get('KALRAY_TOOLCHAIN_DIR')
-            args.pocl_dir = os.path.join(toolchain_dir, f"kvx-cos/lib/kv3-2/KAF/services/")
-        else:
-            logger.warning("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
-            raise RuntimeError
-    else:
-        args.pocl_dir = os.path.abspath(args.pocl_dir)
-    pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
-
-    if "device" in args and args.device == "mppa":
         eval_env(args.bin_file, pocl_file, "kv3-2")
 
-    print(opt)
     args.func(opt)

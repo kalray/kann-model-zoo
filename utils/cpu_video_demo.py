@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###
-# Copyright (C) 2024 Kalray SA. All rights reserved.
+# Copyright (C) 2025 Kalray SA. All rights reserved.
 # This code is Kalray proprietary and confidential.
 # Any use of the code for whatever purpose is subject
 # to specific written permission of Kalray SA.
@@ -22,7 +22,6 @@ import traceback
 import queue
 import numpy
 
-from screeninfo import get_monitors
 import click
 import cv2
 import numpy as np
@@ -102,41 +101,40 @@ class SourceReader:
 
 
 def getTiledWindowsInfo():
-    monitors = get_monitors()
-    if len(monitors) == 0:
-        print("No display detected.\n")
-        return None
-    else:
-        monitor = monitors[0]
-        print("Several display detected, using the first one: H={}, W={}\n"
-              .format(monitor.height, monitor.width))
+    from screeninfo import get_monitors
+    try:
+        monitor = get_monitors()[0]
+        log("Several display detected, using the first one: H={}, W={}\n"
+            .format(monitor.height, monitor.width))
         return {"size": {'h': monitor.height, 'w': monitor.width},
                 "pos": {'x': 0, 'y': 0}}
+    except:
+        log("[WARNING] ** Screen or Display has not been found **\n")
+        return None
 
 
 def draw_text(frame, lines, pos):
     font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.5
+    scale = frame.shape[0] / 640
     thick = 1
     white = (255, 255, 255)
     black = (0, 0, 0)
-    for line in lines:
-        textsize, baseline = cv2.getTextSize(line, font, scale, thick)
-        origin = (pos[0], pos[1] + textsize[1] + baseline)
-        cv2.rectangle(
-            frame,
-            (origin[0], origin[1] + baseline),
-            (origin[0] + textsize[0] + baseline, origin[1] - textsize[1]),
-            white,
-            -1)
+
+    textsize, baseline = cv2.getTextSize(lines[0], font, scale, thick)
+    x1, y1 = pos[0], pos[1]
+    x2, y2 = pos[0] + textsize[0] + baseline, pos[1] - (textsize[1] + baseline) * len(lines)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), white, -1)
+    for i, line in enumerate(lines):
+        origin = (pos[0], (pos[1] - (textsize[1] + baseline) * i))
         cv2.putText(frame, line, origin, font, scale, black, thick, cv2.LINE_AA)
 
 
-def annotate_frame(frame, delta_t):
+def annotate_frame(frame, delta_t, title):
     framerate = 1.0 / delta_t
-    delta_ms = 1000 * delta_t
-    lines = ["speed: {0:0.1f} fps - {1:0.2f} ms".format(framerate, delta_ms)]
-    draw_text(frame, lines, (10, 10))
+    lines = ["Algorithm: {:15s}".format(title)]
+    lines += ["Speed: {:.1f} fps".format(framerate)]
+    origin = (10, frame.shape[0] - 10)
+    draw_text(frame, lines, origin)
 
 
 def show_frame(window_name, frame):
@@ -149,25 +147,29 @@ def show_frame(window_name, frame):
 
 
 def run_demo(
-        config,
-        network_dir,
+        config : dict,
+        network_dir : str,
         src_reader,
         window_info,
-        display=True,
+        display : bool = True,
         out_video=None,
-        out_img_path=None,
+        out_img_path : str = None,
         verbose=True
     ):
     """
-    @param config   Content of <network>.yaml file.
-    @param src_reader SourceReader object abstracting the source type and
-                      replay mode.
-    @param display  Enable graphical display of processed frames.
-    @return         The number of frames processed.
+    @param config         Content of <network>.yaml file.
+    @param network_dir    Generated dir from KaNN
+    @param src_reader     SourceReader object abstracting the source type and
+                          replay mode.
+    @param window_info    Information about the available screens provided by screeninfo
+    @param display        Enable graphical display of processed frames.
+    @param out_video      Write into an output file the video stream
+    @param out_img_path   Write into an output file the last frame processed
+
+    @return               The number of frames processed.
     """
 
     global sess
-    global interpreter
 
     # read the classes file, parser of classes file is done in output_preparator
     with open(config['classes_file'], 'r') as f:
@@ -181,182 +183,92 @@ def run_demo(
     output_preparator_lib_name = re.sub('[^A-Za-z0-9_.]+', '', config['output_preparator']) + '.output_preparator'
     output_preparator = importlib.import_module(output_preparator_lib_name)
 
-    if config['framework'] == 'tensorflow':
-        import tensorflow.compat.v1 as tf
-        from tensorflow.python.client import session
-        session_conf = tf.ConfigProto(intra_op_parallelism_threads = 8, inter_op_parallelism_threads = 8)
-        # Get output tensor
-        graph = sess.graph
-        outputs = dict()
-        for o in config['output_nodes_name']:
-            detections = graph.get_tensor_by_name(f"{o}:0")
-            outputs[o] = detections
-
-    elif config['framework'] == 'tflite':
-        interpreter.allocate_tensors()
-        input_details = interpreter.get_input_details()
-        output_details = interpreter.get_output_details()
-
     window_name = config['name']
     if display:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.moveWindow(window_name, window_info['pos']['x'], window_info['pos']['y'])
-        if src_reader.width < 512 or src_reader.height < 512:
-            ratio = src_reader.width / src_reader.height
-            if src_reader.width >= src_reader.height:
-                cv2.resizeWindow(window_name, int(512 * ratio), 512)
-            else:
-                cv2.resizeWindow(window_name, 512, int(512 * ratio))
+        win_size = 640
+        ratio = src_reader.width / src_reader.height
+        if src_reader.width >= src_reader.height:
+            cv2.resizeWindow(window_name, win_size, int(win_size / ratio))
+            log("Source frame is W{}xH{}, OpenCV window is resized to {}x{}".format(
+                src_reader.width, src_reader.height, win_size, int(win_size / ratio)))
         else:
-            cv2.resizeWindow(window_name, src_reader.width, src_reader.height)
+            cv2.resizeWindow(window_name, win_size, int(win_size * ratio))
+            log("Source frame is W{}xH{}, OpenCV window is resized to {}x{}".format(
+                src_reader.width, src_reader.height, int(win_size * ratio), win_size))
 
     nframes = int(src_reader.cap.get(cv2.CAP_PROP_FRAME_COUNT))
     t = [0] * 7
     frames_counter = 0
-    frame = prev_frame = None
-    out = None
+    frame = None
 
-    if config['framework'] == 'onnx':
-        while True:
-            t[0] = time.perf_counter()  # CATCH FRAME ###############################
-            prev_frame = frame
-            frame = src_reader.get_frame()
-            if frame is None:
-                break
-            frames_counter += 1
+    # Define inputs and outputs neural network name
+    inputs_name = sess.get_inputs()[0].name
+    outputs_name = [o.name for o in sess.get_outputs()]
 
-            t[1] = time.perf_counter()  # PRE-PROCESS FRAME #####################
-            prepared = prepare.prepare_img(frame)
-            while len(prepared.shape) < 4:
-                prepared = numpy.expand_dims(prepared, axis=0)
-            prepared = numpy.transpose(prepared, (0, 3, 1, 2))
-            ort_inputs = {sess.get_inputs()[0].name: prepared}
+    # Infinite Loop on input stream
+    while True:
+        # CATCH FRAME ############################
+        t[0] = time.perf_counter()
+        prev_frame = frame
+        frame = src_reader.get_frame()
+        if frame is None:
+            break
+        frames_counter += 1
 
-            t[2] = time.perf_counter()  # SEND TO ONNX RUNTIME ##################
-            outs = sess.run(None, ort_inputs)
-            out = {k: o for o, k in zip(outs, config['output_nodes_name'])}
+        # PRE-PROCESS FRAME ######################
+        t[1] = time.perf_counter()
+        prepared = prepare.prepare_img(frame)
+        while len(prepared.shape) < 4:
+            prepared = numpy.expand_dims(prepared, axis=0)
+        prepared = numpy.transpose(prepared, (0, 3, 1, 2))
+        ort_inputs = {inputs_name: prepared}  # work with only 1 input
 
-            t[3] = time.perf_counter()  # POST-PROCESS FRAME ####################
-            frame = output_preparator.post_process(config, frame, out, device='cpu', dbg=verbose)
+        # SEND TO ONNX RUNTIME ###################
+        t[2] = time.perf_counter()
+        outs = sess.run(None, ort_inputs)
+        out = {k: o for o, k in zip(outs, outputs_name)}
 
-            t[4] = time.perf_counter()   # ANNOTATE FRAME #######################
-            annotate_frame(frame, t[3] - t[2])
+        # POST-PROCESS FRAME #####################
+        t[3] = time.perf_counter()
+        frame = output_preparator.post_process(
+            config, frame, out, device='cpu', dbg=verbose)
 
-            t[5] = time.perf_counter()  # DISPLAY FRAME ########################
-            if display:
-                if not show_frame(window_name, frame):
-                    break
+        # ANNOTATE FRAME #########################
+        t[4] = time.perf_counter()
+        annotate_frame(frame, t[3] - t[2], config['name'])
 
-            t[6] = time.perf_counter() # END ###################################
-            log("frame:{}/{}\tread: {:0.2f}ms\tpre: {:0.2f}ms\t"
-                "onnx: {:0.2f}ms\tpost: {:0.2f}ms\tdraw: {:0.2f}ms\t"
-                "show: {:0.2f}ms\ttotal: {:0.2f}ms ({:0.1f}fps)".format(
-                frames_counter + 1, nframes,
-                1000*(t[1]-t[0]), 1000*(t[2]-t[1]), 1000*(t[3]-t[2]),
-                1000*(t[4]-t[3]), 1000*(t[5]-t[4]), 1000*(t[6]-t[5]),
-                1000*(t[6]-t[0]), 1.0/(t[6]-t[0])))
-            if out_video is not None:
-                out_video.write(frame)
+        # DISPLAY FRAME ##########################
+        t[5] = time.perf_counter()
+        if display and not show_frame(window_name, frame):
+            break
 
-    elif config['framework'] == 'tensorflow':
-        with session.Session(graph=graph, config=session_conf) as tf_sess:
-            while True:
-                t[0] = time.perf_counter()  # CATCH FRAME ###############################
-                prev_frame = frame
-                frame = src_reader.get_frame()
-                if frame is None:
-                    break
-                frames_counter += 1
-
-                t[1] = time.perf_counter()  # PRE-PROCESS FRAME #####################
-                prepared = prepare.prepare_img(frame)
-                while len(prepared.shape) < 4:
-                    prepared = numpy.expand_dims(prepared, axis=0)
-                feed = {f"{config['input_nodes_name'][0]}:0": prepared}
-
-                t[2] = time.perf_counter()  # SEND TO TF RUNTIME ##################
-                out = tf_sess.run(outputs, feed_dict=feed)
-
-                t[3] = time.perf_counter()  # POST-PROCESS FRAME ####################
-                frame = output_preparator.post_process(config, frame, out, device='cpu', dbg=verbose)
-
-                t[4] = time.perf_counter()  # ANNOTATE FRAME #######################
-                annotate_frame(frame, t[3] - t[2])
-
-                t[5] = time.perf_counter()  # DISPLAY FRAME ########################
-                if display:
-                    if not show_frame(window_name, frame):
-                        break
-
-                t[6] = time.perf_counter()  # END ###################################
-                log("frame:{}/{}\tread: {:0.2f}ms\tpre: {:0.2f}ms\t"
-                    "tf: {:0.2f}ms\tpost: {:0.2f}ms\tdraw: {:0.2f}ms\t"
-                    "show: {:0.2f}ms\ttotal: {:0.2f}ms ({:0.1f}fps)".format(
-                    frames_counter + 1, nframes,
-                    1000 * (t[1] - t[0]), 1000 * (t[2] - t[1]), 1000 * (t[3] - t[2]),
-                    1000 * (t[4] - t[3]), 1000 * (t[5] - t[4]), 1000 * (t[6] - t[5]),
-                    1000 * (t[6] - t[0]), 1.0 / (t[6] - t[0])))
-                if out_video is not None:
-                    out_video.write(frame)
-
-    elif config['framework'] == 'tflite':
-        while True:
-            t[0] = time.perf_counter()  # CATCH FRAME ###############################
-            prev_frame = frame
-            frame = src_reader.get_frame()
-            if frame is None:
-                break
-            frames_counter += 1
-
-            t[1] = time.perf_counter()  # PRE-PROCESS FRAME #####################
-            prepared = prepare.prepare_img(frame)
-            while len(prepared.shape) < 4:
-                prepared = numpy.expand_dims(prepared, axis=0)
-            feed = {f"{config['input_nodes_name'][0]}:0": prepared}
-
-            t[2] = time.perf_counter()  # SEND TO TF RUNTIME ##################
-            hbwc  = config['input_nodes_shape'][0]
-            input_shape = (hbwc[1], hbwc[0], hbwc[2], hbwc[3])
-            interpreter.resize_tensor_input(input_details[0]['index'], input_shape)
-            interpreter.allocate_tensors()
-            interpreter.set_tensor(input_details[0]['index'], prepared)
-            interpreter.invoke()
-            num_outputs = len(config['output_nodes_name'])
-            outs = [interpreter.get_tensor(output_details[k]['index']) for k in range(num_outputs)]
-            out = {k: o for o, k in zip(outs, config['output_nodes_name'])}
-
-            t[3] = time.perf_counter()  # POST-PROCESS FRAME ####################
-            frame = output_preparator.post_process(config, frame, out, device='cpu', dbg=verbose)
-
-            t[4] = time.perf_counter()  # ANNOTATE FRAME #######################
-            annotate_frame(frame, t[3] - t[2])
-
-            t[5] = time.perf_counter()  # DISPLAY FRAME ########################
-            if display:
-                if not show_frame(window_name, frame):
-                    break
-
-            t[6] = time.perf_counter()  # END ###################################
-            log("frame:{}/{}\tread: {:0.2f}ms\tpre: {:0.2f}ms\t"
-                "tf: {:0.2f}ms\tpost: {:0.2f}ms\tdraw: {:0.2f}ms\t"
-                "show: {:0.2f}ms\ttotal: {:0.2f}ms ({:0.1f}fps)".format(
-                frames_counter + 1, nframes,
-                1000 * (t[1] - t[0]), 1000 * (t[2] - t[1]), 1000 * (t[3] - t[2]),
-                1000 * (t[4] - t[3]), 1000 * (t[5] - t[4]), 1000 * (t[6] - t[5]),
-                1000 * (t[6] - t[0]), 1.0 / (t[6] - t[0])))
-            if out_video is not None:
-                out_video.write(frame)
-
-    else:
-        raise NotImplementedError(f"framework {config['framework']} not implemented yet")
-
+        # PRINT TIMINGS ##########################
+        t[6] = time.perf_counter()
+        log("frame:{}/{}\tread: {:0.2f}ms\tpre: {:0.2f}ms\t"
+            "onnx: {:0.2f}ms\tpost: {:0.2f}ms\tdraw: {:0.2f}ms\t"
+            "show: {:0.2f}ms\ttotal: {:0.2f}ms ({:0.1f}fps)".format(
+            frames_counter, nframes,
+            1000*(t[1]-t[0]),  # read (ms)
+            1000*(t[2]-t[1]),  # preprocessing (ms)
+            1000*(t[3]-t[2]),  # compute data w/ onnx session (ms)
+            1000*(t[4]-t[3]),  # post processing (ms)
+            1000*(t[5]-t[4]),  # annotate frame (ms)
+            1000*(t[6]-t[5]),  # show frame (ms)
+            1000*(t[6]-t[0]),  # total (ms)
+            1.0/(t[6]-t[0]))   # total (fps)
+        )
+        # END ####################################
+        if out_video is not None:
+            out_video.write(frame)
+        # end of while loop
     if display:
         cv2.destroyWindow(window_name)
         cv2.waitKey(1)  # pump all events, avoid bug in opencv where windows are not properly closed
     if out_img_path:
         cv2.imwrite(out_img_path, prev_frame)
         log(f"Last frame has been saved to: {out_img_path}")
-
     return frames_counter
 
 
@@ -390,23 +302,25 @@ def run_demo(
     is_flag=True,
     help="Save last frame with output predictions as video file.")
 def main(
-    network_config,
-    source,
-    verbose,
-    no_display,
-    no_replay,
-    save_video,
-    save_img):
-    """ ONNX/TF demonstrator.
-    network_config is a network configuration file for KaNN generation.
+        network_config,
+        source,
+        verbose,
+        no_display,
+        no_replay,
+        save_video,
+        save_img):
+
+    """ ONNX demonstrator.
+
+    NETWORK_CONFIG is a network configuration file for KaNN generation.
     SOURCE is an input video. It can be either:
     \t- A webcam ID, typically 0 on a machine with a single webcam.
     \t- A video file in a format supported by OpenCV.
     \t- An image sequence (eg. img_%02d.jpg, which will read samples like
     img_00.jpg, img_01.jpg, img_02.jpg, ...).
     """
+
     global sess
-    global interpreter
 
     # find <network>.yaml file in generated_dir
     if not os.path.exists(network_config):
@@ -452,45 +366,23 @@ def main(
 
     try:
         # start the ONNX model
-        if config['framework'] == "onnx":
-            import onnx
-            import onnxruntime
-            onnx_path = os.path.join(os.path.dirname(network_config), config['onnx_model'])
-            onnx_model = onnx.load(onnx_path)
-            onnx.checker.check_model(onnx_model)
-            sess = onnxruntime.InferenceSession(onnx_path)
-        if config['framework'] == "tensorflow":
-            import tensorflow as tf
-            try:
-                pb_path = os.path.join(os.path.dirname(network_config), config['tensorflow_saved_model'])
-                sess = tf.saved_model.load(os.path.join(pb_path))
-            except:
-                import tensorflow.compat.v1 as tf
-                from tensorflow.python.client import session
-                from tensorflow.python.platform import gfile
-                from tensorflow.python.framework import ops
-                from tensorflow.core.framework import graph_pb2
-                pb_path = os.path.join(os.path.dirname(network_config), config['tensorflow_frozen_pb'])
-                session_conf = tf.ConfigProto(intra_op_parallelism_threads=8, inter_op_parallelism_threads=8)
-                with session.Session(graph=ops.Graph(), config=session_conf) as sess:
-                    # Import freeze model
-                    with gfile.FastGFile(pb_path, 'rb') as f:
-                        graph_def = graph_pb2.GraphDef()
-                        graph_def.ParseFromString(f.read())
-                    tf.import_graph_def(graph_def, name='')
-                    graph = tf.get_default_graph()
-        if config['framework'] == "tflite":
-            import tensorflow.compat.v1 as tf
-            tflite_path = os.path.join(os.path.dirname(network_config), config['tflite_file'])
-            interpreter = interpreter = tf.lite.Interpreter(tflite_path)
-        # Do not use opencl to offload opencv (conflicting with kann on mppa)
-        # ref T12057
+        import onnx
+        import onnxruntime
+        onnx_path = os.path.join(os.path.dirname(network_config), config['onnx_model'])
+        if not os.path.isfile(onnx_path):
+            onnx_path = os.path.join(os.path.dirname(network_config), "optimized-model.onnx")
+        if not os.path.isfile(onnx_path):
+            raise RuntimeError(f"{onnx_path} does not exists, please ensure that model file path exists")
+        onnx_model = onnx.load(onnx_path)
+        onnx.checker.check_model(onnx_model)
+        sess = onnxruntime.InferenceSession(onnx_path)
         os.environ["OPENCV_OPENCL_DEVICE"] = "disabled"
         os.environ["OPENCV_OPENCL_RUNTIME"] = "null"
-        # Manage window position and size
-        window_info = None if no_display else getTiledWindowsInfo()
-        assert (no_display or window_info is not None)
 
+        # Manage window position and size
+        window_info = getTiledWindowsInfo()
+        if window_info is None:
+            no_display = True
         # run demo
         nbr_frames = run_demo(
             config,
@@ -505,9 +397,7 @@ def main(
     except Exception as e:
         log("ERROR:\n" + traceback.format_exc())
     finally:
-        # make sure we kill kann no matter what happens
-        # (most of the time: videofile unexpectedly closed, or
-        # kann took more than 2s to terminate after we closed kann_fifo_in)
+        # make video file unexpectedly closed
         if save_video:
             out_video.release()
             log("Output has been save to {}".format(out_video_path))
