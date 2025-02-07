@@ -5,89 +5,56 @@ import torch
 import torchvision
 
 
-palette = {
-    'background':   [0, 0, 0],
-    'person':       [0, 128, 0],
-    'bicycle':      [255, 153, 51],
-    'car':          [51, 178, 255],
-    'motorcycle':   [230, 230, 0],
-    'airplane':     [255, 153, 255],
-    'bus':          [153, 204, 255],
-    'train':        [255, 102, 255],
-    'truck':        [255, 51, 255],
-    'boat':         [102, 178, 255],
-    'traffic_light':[51, 153, 255],
-    'fire_hydrant': [255, 153, 153],
-    'stop_sign':    [255, 102, 102],
-    'parking_meter':[255, 51, 51],
-    'bench':        [153, 255, 153],
-    'bird':         [102, 255, 102],
-    'cat':          [51, 255, 51],
-    'dog':          [0, 255, 0],
-    'horse':        [0, 0, 255],
-    "sheep":        [255, 0, 0],
-    "cow":          [255, 255, 255],
-    "elephant":     [153, 204, 255],
-    "bear":         [255, 128, 0],
-    "zebra":        [255, 153, 51],
-    "giraffe":      [255, 178, 102],
-    "backpack":     [230, 230, 0],
-    "umbrella":     [255, 153, 255],
-    "handbag":      [153, 204, 255],
-    "tie":          [255, 102, 255],
-    "suitcase":     [255, 51, 255],
-    "frisbee":      [102, 178, 255],
-    "skis":         [51, 153, 255],
-    "snowboard":    [255, 153, 153],
-    "sports_ball":  [255, 102, 102],
-    "kite":         [255, 51, 51],
-    "baseball_bat": [153, 255, 153],
-    "baseball_glove": [102, 255, 102],
-    "skateboard":   [51, 255, 51],
-    "surfboard":    [0, 255, 0],
-    "tennis_racket": [0, 0, 255],
-    "bottle":       [255, 0, 0],
-    "wine_glass":   [255, 255, 255],
-    "cup":          [153, 204, 255],
-    "fork":         [255, 128, 0],
-    "knife":        [255, 153, 51],
-    "spoon":        [255, 178, 102],
-    "bowl":         [230, 230, 0],
-    "banana":       [255, 153, 255],
-    "apple":        [153, 204, 255],
-    "sandwich":     [255, 102, 255],
-    "orange":       [255, 51, 255],
-    "broccoli":     [102, 178, 255],
-    "carrot":       [51, 153, 255],
-    "hot_dog":      [255, 153, 153],
-    "pizza":        [255, 102, 102],
-    "donut":        [255, 51, 51],
-    "cake":         [153, 255, 153],
-    "chair":        [102, 255, 102],
-    "couch":        [51, 255, 51],
-    "potted_plant": [0, 255, 0],
-    "bed":          [0, 0, 255],
-    "dining_table": [255, 0, 0],
-    "toilet":       [255, 255, 255],
-    "tv":           [0, 0, 255],
-    "laptop":       [255, 128, 0],
-    "mouse":        [255, 153, 51],
-    "remote":       [255, 178, 102],
-    "keyboard":     [230, 230, 0],
-    "cell_phone":   [255, 153, 255],
-    "microwave":    [153, 204, 255],
-    "oven":         [255, 102, 255],
-    "toaster":      [255, 51, 255],
-    "sink":         [102, 178, 255],
-    "refrigerator": [51, 153, 255],
-    "book":         [255, 153, 153],
-    "clock":        [255, 102, 102],
-    "vase":         [255, 51, 51],
-    "scissors":     [153, 255, 153],
-    "teddy_bear":   [102, 255, 102],
-    "hair_drier":   [51, 255, 51],
-    "toothbrush":   [0, 255, 0]
-}
+class DFL(torch.nn.Module):
+    """
+    Integral module of Distribution Focal Loss (DFL).
+    Proposed in Generalized Focal Loss https://ieeexplore.ieee.org/document/9792391
+    """
+
+    def __init__(self, c1=16):
+        """Initialize a convolutional layer with a given number of input channels."""
+        super().__init__()
+        self.conv = torch.nn.Conv2d(c1, 1, 1, bias=False).requires_grad_(False)
+        x = torch.arange(c1, dtype=torch.float)
+        self.conv.weight.data[:] = torch.nn.Parameter(x.view(1, c1, 1, 1))
+        self.c1 = c1
+
+    def forward(self, x):
+        """Applies a transformer layer on input tensor 'x' and returns a tensor."""
+        b, _, a = x.shape  # batch, channels, anchors
+        return self.conv(x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)).view(b, 4, a)
+
+
+def decode_bboxes(bboxes, anchors):
+    """Decode bounding boxes."""
+    return dist2bbox(bboxes, anchors, xywh=True, dim=1)
+
+
+def make_anchors(feats, strides, grid_cell_offset=0.5):
+    """Generate anchors from features."""
+    anchor_points, stride_tensor = [], []
+    assert feats is not None
+    dtype, device = feats[0].dtype, feats[0].device
+    for i, stride in enumerate(strides):
+        _, _, h, w = feats[i].shape
+        sx = torch.arange(end=w, dtype=dtype) + grid_cell_offset  # shift x
+        sy = torch.arange(end=h, dtype=dtype) + grid_cell_offset  # shift y
+        sy, sx = torch.meshgrid(sy, sx, indexing="ij")
+        anchor_points.append(torch.stack((sx, sy), -1).view(-1, 2))
+        stride_tensor.append(torch.full((h * w, 1), stride, dtype=dtype))
+    return torch.cat(anchor_points), torch.cat(stride_tensor)
+
+
+def dist2bbox(distance, anchor_points, xywh=True, dim=-1):
+    """Transform distance(ltrb) to box(xywh or xyxy)."""
+    lt, rb = distance.chunk(2, dim)
+    x1y1 = anchor_points - lt
+    x2y2 = anchor_points + rb
+    if xywh:
+        c_xy = (x1y1 + x2y2) / 2
+        wh = x2y2 - x1y1
+        return torch.cat((c_xy, wh), dim)  # xywh bbox
+    return torch.cat((x1y1, x2y2), dim)  # xyxy bbox
 
 
 def plot_box(x, img, color=None, label=None, line_thickness=None):

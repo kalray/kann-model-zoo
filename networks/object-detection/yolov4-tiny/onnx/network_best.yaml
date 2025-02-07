@@ -1,0 +1,26 @@
+name: YOLOv4-Tiny
+framework: onnx
+onnx_model: models/yolov4-tiny.onnx
+onnx_graph_optim: true
+
+input_nodes_name:
+    - input_1
+input_nodes_shape:
+    - [416, 1, 416, 3]
+output_nodes_name:
+    - conv2d_17
+    - conv2d_20
+output_nodes_shape:
+    - [13, 1, 13, 255]
+    - [26, 1, 26, 255]
+
+generate_options:
+    quantize_fp32_to_fp16: true
+    data_buffer_size: 7560000
+    ddr_images_tiles_size: 65535
+
+extra_data:
+    classes: classes.txt
+    input_preparators:
+        - input_preparator.py
+    output_preparator: output_preparator

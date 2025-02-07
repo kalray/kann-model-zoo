@@ -1,0 +1,34 @@
+name: deeplabv3plus_mobilenetv2
+framework: onnx
+onnx_model: models/deeplab-mb2_bilinear.onnx
+onnx_graph_optim: true
+
+input_nodes_name:
+    - MobilenetV2/MobilenetV2/input:0
+input_nodes_shape:
+    - [513, 1, 513, 3]
+input_nodes_dtype:
+    - float32
+
+output_nodes_name:
+    - ResizeBilinear_2:0
+output_nodes_shape:
+    - [520, 1, 520, 21]
+output_nodes_dtype:
+    - float32
+
+generate_options:
+    arch: kv3-2
+    quantize_fp32_to_fp16: true
+    data_buffer_size: 6240000
+    code_buffer_size: 20000
+    threshold_image_to_ddr: 10000000
+    threshold_max_params_size: 500000
+    ddr_images_tiles_size: 65535
+    splitdepth_corrector_ratio: 256.0
+    max_live_range: 20
+extra_data:
+    classes: classes.txt
+    input_preparators:
+        - input_preparator.py
+    output_preparator: output_preparator

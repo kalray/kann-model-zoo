@@ -75,12 +75,14 @@ def post_process(cfg, frame, nn_outputs, device='mppa', dbg=True, **kwargs):
     if dbg:
         t0 = time.perf_counter()
     if device == 'mppa':
+        outs = dict()
         for name, shape in zip(cfg['output_nodes_name'], cfg['output_nodes_shape']):
-            nn_outputs[name] = nn_outputs[name].reshape(shape)
+            outs[name] = nn_outputs[name].reshape(shape)
             if len(shape) == 4:
                 H, B, W, C = range(4)
-                nn_outputs[name] = nn_outputs[name].transpose((B, C, H, W))
-                nn_outputs[name] = nn_outputs[name].astype(numpy.float32)
+                outs[name] = outs[name].transpose((B, C, H, W))
+                outs[name] = outs[name].astype(numpy.float32)
+        nn_outputs = outs
     if dbg:
         t1 = time.perf_counter()
         print('Post-processing preCNN elapsed time: %.3fms' % (1e3 * (t1 - t0)))

@@ -28,4 +28,3 @@ extra_data:
     input_preparators:
         - input_preparator.py
     output_preparator: output_preparator
-

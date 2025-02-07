@@ -1,14 +1,15 @@
-import os
 import cv2
 import time
 import numpy
 import torch
-import onnxruntime as rt
 from .util import filter_out_boxes
 from .util import scale_coords
 from .util import plot_box
 from .util import process_mask
-from .util import palette
+from .util import decode_bboxes
+from .util import make_anchors
+from .util import DFL
+from .cmap import palette
 
 
 def decode_segmask(mask, cmap, nb_classes):
@@ -102,6 +103,42 @@ def annotate_overlay(img, masks, classes):
     return img_overlay
 
 
+def detect(x):
+
+    """Concatenates and returns predicted bounding boxes and class probabilities."""
+
+    # build detection boxes pred
+    det = [torch.Tensor(i) for i in x.values() if i.shape[1] > 32]
+    # build detection mask seg
+    seg = []
+    for a in det:
+        for b in x.values():
+            if b.shape[1] <= 32:
+                if a.shape[-2:] == b.shape[-2:]:
+                    seg += [torch.Tensor(b)]
+    # sort by shape
+    for i, t in enumerate(det):
+        if t.shape[-1] > det[0].shape[-1]:
+            det = [det.pop(i)] + det
+    # define parameters to compute anchors and boxes
+    nc = 80
+    no = det[0].shape[1]
+    reg_max = 16
+    stride = [16., 8., 32.]
+
+    # Inference path
+    shape = det[0].shape  # BCHW
+    det_cat = torch.cat([xi.view(shape[0], no, -1) for xi in det], 2)
+    anchors, strides = (x.transpose(0, 1) for x in make_anchors(det, stride, 0.5))
+    box, cls = det_cat.split((reg_max * 4, nc), 1)
+    odfl = distFocalLoss(box)
+    dbox = decode_bboxes(odfl, anchors.unsqueeze(0)) * strides
+
+    seg_reshaped = torch.cat([torch.reshape(x, (x.shape[0], x.shape[1], -1)) for x in seg], 2)
+    y = torch.cat((dbox, cls.sigmoid(), seg_reshaped), 1)
+    return y.numpy()
+
+
 def post_process(cfg, frame, nn_outputs, device='mppa', **kwargs):
     verbose = kwargs.get('dbg', False)
     # nn_outputs is a dict which contains all cnn outputs as value and their name as key
@@ -124,8 +161,10 @@ def post_process(cfg, frame, nn_outputs, device='mppa', **kwargs):
 
     # post process with the bottom neural networks
     # --
-    feed_inputs = {k: nn_outputs[k] for k in postproc_inputs}
-    preds = sess.run(None, feed_inputs)
+    # feed_inputs = {k: nn_outputs[k] for k in postproc_inputs}
+    # preds1 = sess.run(None, feed_inputs)[0]
+    preds = detect(nn_outputs)
+
     if verbose:
         t2 = time.perf_counter()
         print('Post-processing CNN    elapsed time: %.3fms' % (1e3 * (t2 - t1)))
@@ -142,7 +181,7 @@ def post_process(cfg, frame, nn_outputs, device='mppa', **kwargs):
     # --
     conf_thres = 0.25
     iou_thres = 0.5
-    p = filter_out_boxes(preds[0], conf_thres, iou_thres, nc=len(classes))
+    p = filter_out_boxes(preds, conf_thres, iou_thres, nc=len(classes))
     if verbose:
         t2 = time.perf_counter()
         print('Post-processing NMS    elapsed time: %.3fms' % (1e3 * (t2 - t1)))
@@ -279,10 +318,6 @@ def annotate_fusion(img, masks, cmap, use_torch=True, alpha=0.5):
     return im_mask_np
 
 
-sess = rt.InferenceSession(
-    os.path.dirname(os.path.realpath(__file__)) + "/yolov8n-seg.postproc.onnx")
-postproc_inputs = []
-for postproc_input in sess.get_inputs():
-    postproc_inputs.append(postproc_input.name)
 classes = None
 colors = None
+distFocalLoss = DFL()

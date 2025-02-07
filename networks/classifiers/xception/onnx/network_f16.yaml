@@ -1,0 +1,25 @@
+name: Xception
+framework: onnx
+onnx_model: ./models/xception.onnx
+onnx_graph_optim: true
+
+input_nodes_name:
+    - images:0
+input_nodes_shape:
+    - [229, 1, 229, 3]
+output_nodes_name:
+    - Identity:0
+output_nodes_shape:
+    - [1, 1000]
+
+generate_options:
+    quantize_fp32_to_fp16: true
+    threshold_image_to_ddr: 50000000
+    threshold_max_params_size: 350000
+    ddr_images_tiles_size: 65535
+
+extra_data:
+    classes: classes.txt
+    input_preparators:
+        - input_preparator.py
+    output_preparator: output_preparator

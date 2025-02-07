@@ -31,8 +31,12 @@ def prepare_img(mat, out_dtype=numpy.float32):
     mat = cv2.cvtColor(mat, cv2.COLOR_BGR2RGB)
     original_image_size = mat.shape[:2]
     image_data = image_preprocess(numpy.copy(mat), [416, 416])
+<<<<<<< HEAD
     image_data = image_data[numpy.newaxis, ...].astype(numpy.float32)
     return image_data
+=======
+    return image_data.astype(out_dtype)
+>>>>>>> 474b47e ([NETWORKS] YOLOv4-tiny: replace Transpose+Split+Transpose by Slice onnx node)
 
 
 def image_stream(filename):
