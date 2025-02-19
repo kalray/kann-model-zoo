@@ -91,6 +91,7 @@ Each model is packaged to be compiled and run for KaNN SDK. It is one DIRectory,
 Models LICENSE and SOURCES are described individually in our HuggingFace space, available at:
 https://huggingface.co/Kalray
 
+<img width="25%" alignment="center" src="./utils/materials/Hugging_Face_logo.svg"></a></br>
 
 ## Generate a model to run on the MPPA®
 
@@ -205,7 +206,8 @@ example the DIR `kann_custom_layers` contents the support of :
  * SiLU
 
 Please find the few steps to use it, for example YOLOv8:
-1. Configure sw environment
+
+A. Configure sw environment
 ```bash
 $ source /opt/kalray/accesscore/kalray.sh
 ```
@@ -216,21 +218,25 @@ Considering that python environment is set to : `$HOME/.local/share/python3-kann
 source $HOME/.local/share/python3-kann-venv/bin/activate
 ```
 
-2. Then, buid custom kernels to run over the MPPA®:
+B. Then, buid custom kernels to run over the MPPA®:
 ```bash
 make -BC kann_custom_layers O=$PWD/output
 ```
 
-2. Generate model:
+C. Generate model:
+
 ```bash
 PYTHONPATH=$PWD/kann_custom_layers ./generate $PWD/networks/object-detection/yolov8n/onnx/network_best.yaml -d yolov8n
 ```
 
-3. Run demo with generated DIR and new kernels compiled (.pocl file) for the MPPA®
+D. Run demo with generated DIR and new kernels compiled (.pocl file) for the MPPA®
+
 ```bash
 ./run --pocl-dir=$PWD/output/opencl_kernels demo --device=mppa yolov8n ./utils/sources/cat.jpg --verbose
 ```
-or on the cpu directly:
+
+or on the CPU directly:
+
 ```bash
 ./run demo --device=cpu yolov8n ./utils/sources/cat.jpg --verbose
 ```
@@ -238,8 +244,9 @@ or on the cpu directly:
 ## Jupyter Notebooks
 
 You could notice that a DIR called `./notebooks/` is available in this repository. Take a look to:
+
 * [x] [quick start](./notebooks/quick_start.ipynb): generate and run quickly a neural networks from
-   the kann-models-zoo
+   the kann-model-zoo
 
 To execute it, please set up your python environment and be sure you could use correctly your preferred web browser
 (firefox, google-chrome, ... for example) :
@@ -252,7 +259,8 @@ pip install jupyter
 # wait that all dependencies are installed ...
 ```
 
-From kann-models-zoo home directory, then open the desired notebook:
+From kann-model-zoo home directory, then open the desired notebook:
+
 ```bash
 jupyter notebook notebooks/quick_start.ipynb &
 ```
@@ -275,4 +283,3 @@ Other notebooks will be soon available:
 * [ ] custom kernel (expert): optimie a custom kernel to accelerate a specific network
 
 Authors: Quentin Muller <qmuller@kalrayinc.com>
-
