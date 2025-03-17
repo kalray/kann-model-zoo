@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+###
+# Copyright (C) 2025 Kalray SA. All rights reserved.
+# This code is Kalray proprietary and confidential.
+# Any use of the code for whatever purpose is subject
+# to specific written permission of Kalray SA.
+###
+
+FILEPATH=$(realpath "$0")
+CDIR=$(dirname "$FILEPATH")
+
+export PYTHONPATH=$CDIR:$CDIR/utils
+echo "$CDIR/utils/kann_eval.py ${@:1}"
+python3 $CDIR/utils/kann_eval.py "${@:1}" || exit 1
+exit 0

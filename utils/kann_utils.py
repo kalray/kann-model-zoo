@@ -3,6 +3,10 @@
 # This code is Kalray proprietary and confidential.
 # Any use of the code for whatever purpose is subject
 # to specific written permission of Kalray SA.
+#
+# Authors:
+#  Quentin Muller, <qmuller@kalrayinc.com>
+#  Daniel Angulo, <dangulo@kalrayinc.com
 ###
 
 import os
@@ -25,12 +29,12 @@ class cFormatter(logging.Formatter):
     red = "\x1b[31;1m"
     bold_red = "\x1b[35;1m"
     reset = "\x1b[0;0m"
-    format = "[%(levelname)s]: %(message)s"
+    format = "%(levelname)s: %(message)s"
     format_err = "%(asctime)s | [%(levelname)s]: %(message)s (%(filename)s:%(lineno)d)"
 
     FORMATS = {
         logging.DEBUG: grey + format + reset,
-        logging.INFO: white + format + reset,
+        logging.INFO: format,
         logging.WARNING: yellow + format_err + reset,
         logging.ERROR: red + format_err + reset,
         logging.CRITICAL: bold_red + format_err + reset
@@ -42,8 +46,29 @@ class cFormatter(logging.Formatter):
         return formatter.format(record)
 
 
+class kHelpFormat(argparse.HelpFormatter):
+    def __init__(self, prog=None, indent_increment=4, width=70):
+        if prog is None:
+            prog = os.path.basename(sys.argv[0])
+        super().__init__(prog, indent_increment=indent_increment, width=width)
+
+
+class kHelp(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print("\nThis is a wrapper to download model from 🤗 and generate model with kann\n")
+        print("*" * 80)
+        print("")
+        parser.print_help()
+        print("")
+        print("*" * 80)
+        print("\n $ kann generate --help for more informations (detailed below)\n")
+        cmd_args = ["kann", "generate", "--help"]
+        subprocess.run(cmd_args, check=True)
+        sys.exit(0)
+
+
 # create logger
-logger = logging.getLogger("Benchmark")
+logger = logging.getLogger("KaNN-Model-Zoo")
 logger.setLevel(logging.INFO)
 
 stdout_console_handler = logging.StreamHandler(sys.stdout)
@@ -210,62 +235,6 @@ def build_new_model(nPath, size, cfgDir):
     with open(cfg_file_path, 'w+') as yfile:
         yaml.dump(cfg, yfile, indent=4, sort_keys=False)
     return cfg_file_path
-
-
-def generate_raw_input(yaml_path, dest_path, nb_frames=1, data='random'):
-    """
-    @generate automatically by tabnine/mistral
-    This function generates raw input data for the neural network based
-    on the provided YAML configuration file.
-
-    Parameters:
-    - yaml_path (str): The path to the YAML configuration file.
-    - dest_path (str): The destination path where the raw input data
-                       will be saved.
-    - nb_frames (int): The number of frames to generate for each
-                       input data. Default is 1.
-    - data (str): The type of data to generate. Can be "random",
-                  "ones", or "zeros". Default is "random".
-
-    Returns:
-    None. The raw input data is saved to the destination path specified in the 'dest_path' parameter.
-
-    Raises:
-    - RuntimeError: If the 'data' argument is not one of the expected values "random", "ones", or "zeros".
-
-    Usage:
-    To generate raw input data, simply call the function with the required parameters:
-
-    ```python
-    generate_raw_input('path_to_yaml_file.yaml', 'path_to_save_data')
-    ```
-
-    This will generate raw input data based on the provided YAML configuration file and save
-    it to the specified destination path.
-    """
-
-    with open(yaml_path, 'r') as yaml_file:
-        cfg = yaml.load(yaml_file, Loader=yaml.Loader)
-
-    fbs = cfg.get('forced_batch_size', 1)
-    if fbs is None:
-        fbs = 1
-
-    for idx, (cnn_input_name, cnn_input_shape) in enumerate(
-            zip(cfg['input_nodes_name'], cfg['input_nodes_shape'])):
-        dtype = getattr(numpy, cfg.get('input_nodes_dtypes', ['float32'] * len(cfg['input_nodes_name']))[idx])
-        shape = (cnn_input_shape[0], fbs * nb_frames, cnn_input_shape[2], cnn_input_shape[3])
-        if data == 'random':
-            input_data = numpy.random.uniform(-1, 1, size=shape).astype(dtype)
-        elif data == 'ones':
-            input_data = numpy.zeros(shape=shape).astype(dtype)
-        elif data == 'zeros':
-            input_data = numpy.ones(shape=shape).astype(dtype)
-        else:
-            raise RuntimeError('data arguments is not expected, get {}, '
-                               'please choose between ["random", "ones", "zeros"]')
-        os.makedirs(os.path.join(dest_path, os.path.dirname(cnn_input_name)), exist_ok=True)
-        input_data.tofile(os.path.join(dest_path, cnn_input_name))
 
 
 if __name__ == "__main__":

@@ -35,13 +35,7 @@ def infer(all_options):
     os.environ["KANN_POCL_FILE"] = pocl_file
 
     # Generate inference log file path
-    i = 0
     inference_log_path = f"inference_{os.path.basename(options.generated_dir)}.log"
-    _inference_log_path = inference_log_path
-    while os.path.exists(_inference_log_path):
-        _inference_log_path = inference_log_path.replace(".log", "") + f"_{i}.log"
-        i += 1
-    inference_log_path = _inference_log_path
 
     # Generate command to run
     infer_p = None
@@ -160,13 +154,7 @@ def demo(all_options):
         raise NotImplementedError(f"Device {options.device} not supported")
 
     # Generate inference log file path
-    i = 0
     inference_log_path = f"demo_{options.device}_{os.path.basename(options.generated_dir)}.log"
-    _inference_log_path = inference_log_path
-    while os.path.exists(_inference_log_path):
-        _inference_log_path = inference_log_path.replace(".log", "") + f"_{i}.log"
-        i += 1
-    inference_log_path = _inference_log_path
 
     # Run proc kann_opencl_cnn using tee
     infer_p =  None

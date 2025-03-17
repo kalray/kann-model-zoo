@@ -20,6 +20,10 @@ KaNN™ Model Zoo complements the KaNN™ SDK, which streamlines model generatio
   - [Generate a model to run on the MPPA®](#generate-a-model-to-run-on-the-mppa)
   - [Evaluate the neural network inference on the MPPA®](#evaluate-the-neural-network-inference-on-the-mppa)
   - [Run the neural network as a demo](#run-the-neural-network-as-a-demo)
+  - [Neural networks accuracy and associated metrics](#neural-networks-accuracy-and-associated-metrics)
+    - [Definitions](#definitions)
+    - [How metrics are computed](#how-metrics-are-computed)
+    - [Steps to evaluate the accuracy of a generated neural network (object-detection)](#steps-to-evaluate-the-accuracy-of-a-generated-neural-network-object-detection)
   - [Custom Layers for extended neural network supoort](#custom-layers-for-extended-neural-network-supoort)
   - [Jupyter Notebooks](#jupyter-notebooks)
 
@@ -38,11 +42,20 @@ Kalray Neural Network (KaNN™) is a SDK included in the AccessCore Embedded (AC
  For details, please do not hesitate to read the documentation 😏 or contact us directly at support@kalrayinc.com
 
 So, to deploy your solution from an identified neural network, the steps are all easy 😃:
+
 1. From a CNN, generate the KaNN™ model bytecode (no HW dependencies)
+
+   ```bash
+   kann generate --model=Kalray/mnist/mnist.onnx -d kMnist
+   ```
 2. Run the model from demo application (Python script & host application are included in the repository
    and AccessCore software)
 
-Running the model requires a PCIe board with Kalray's MPPA®.
+   ```bash
+   kann run kMnist
+   ```
+
+NB: Running the model requires a PCIe board with Kalray's MPPA®.
 
 ## Prerequisites: SW environment & configuration
 
@@ -101,48 +114,59 @@ https://huggingface.co/Kalray.
 
 Use the following command to generate an model to run on the MPPA®:
 ```bash
-# syntax: $ ./generate <configuration_file.yaml> -d <generated_path_dir>
-./generate networks/object-detection/yolov8n-relu/onnx/network_f16.yaml -d yolov8n
+# syntax: ./generate -c <configuration_file.yaml> -d <generated_path_dir>
+./generate -c networks/object-detection/yolov8n-relu/onnx/network_f16.yaml -d yolov8n
 ```
 
-It will provide you into the path directory `generated_path_dir`, here called "yolov8n":
+It will provide you into the path directory `generated_path_dir`, here called `yolov8n`:
 * a <my_network>.kann file (network contents with runtime and context information)
 * a network.dump.yaml file (a copy of the configuration file used)
 * a log file of the generation
 
-Please refer to Kalray's documentation and KaNN user manual provided for more details !
+Please refer to Kalray's documentation and KaNN user manual provided for more details 
+to fine-tune (or optimize) the inference.
+
+From the generate command, you are able to list the available models locally:
+```bash
+./generate --list
+```
+
+From the list printed in the terminal, it is now possible to generate a neural
+ network to execute on the MPPA®, for example :
+```bash
+./generate -n yolov8n
+```
 
 ## Evaluate the neural network inference on the MPPA®
 
 Kalray's toolchain integrates its own host application named `kann_opencl_cnn` to run compiled models.
-To evaluate the performance of the neural network on the MPPA®, 2 manners are possible:
-  + using `./run` script wit the `infer` sub-command (it will use the `kann run` command indirectly)
+To evaluate the performance of the neural network on the MPPA®, two methods :
+  + use `./run` script wit the `infer` sub-command (it will use the `kann run` command indirectly)
   + or directly, `kann run` cli-commmand offered by KaNN
 
 Use the following command to start quickly the inference:
 ```bash
-# ./run infer <generated_path_dir>
+# syntax: ./run infer <generated_path_dir>
 ./run infer yolov8n
 ```
 or
 ```bash
-# kann run <generated_path_dir> --nb-frames=25
+# syntax: kann run <generated_path_dir> --nb-frames=25
 kann run yolov8n -n 25
 ```
 
-> **TIPS 😎 ...**
+**NOTES 😎**
+
 Now, with kann it is possible to evaluate directly an ONNX model from HuggingFace with this method:
-  ```bash
-  # kann generate --model=<HF_REPO_ID>/<FILENAME.onnx> -d <GEN_DIR> 
-  # kann run <GEN_DIR>
-  kann generate --model=Kalray/yolov8n-relu/yolov8n-relu-s.optimized.onnx \
-    --quantize_fp32_to_fp16=True -d yolov8n-mppa-fp16
-  # then
-  kann run yolov8n-mppa-fp16
-  ```
-NB: input and output processing scripts are not included in this case, only the IR model is generate from ONNX file.
-In the case you want to run a demo pipeline, please use the packaged models included in **KaNN Model Zoo** or include
-your own scripts.
+```bash
+# $ kann generate --model=<HF_REPO_ID>/<FILENAME.onnx> -d <GEN_DIR>
+# $ kann run <GEN_DIR>
+kann generate --model=Kalray/yolov8n-relu/yolov8n-relu-s.optimized.onnx \
+  --quantize_fp32_to_fp16=True -d yolov8n
+# then
+kann run yolov8n
+```
+
 
 ## Run the neural network as a demo
 
@@ -150,11 +174,6 @@ Use the following command to start the inference of, the model just
 generated, from a video pipeline. It will include the inference into a pre-
 and post-processing scripts with a video/image stream input, supported by
 the OpenCV Python API.
-
-Use the following command to start inference with the newly generated model
- from a video pipeline. This setup integrates inference with pre- and 
- post-processing scripts, utilizing a video or image stream input supported
- by the OpenCV Python API.
 
 ```bash
 # ./run demo <generated_path_dir> <source_file_path>
@@ -211,10 +230,114 @@ Demonstration scripts are provided in python.
 
 Please take a look to our notebooks included in the repository (see [Jupyter Notebooks](#jupyter-notebooks))
 
+
+## Neural networks accuracy and associated metrics
+
+### Definitions
+
+In this repository, neural networks can predict in one image/frame:
+
+* a classification label ID (classifiers),
+* one or multiple bounding box(es) to point to an object (object-detection)
+* a mask associated to an object (segmentation)
+
+To consider the accuary of a prediction, some metrics needs to be defined here such as:
+
+* **Precision**: True Positives (TP) ratio with the sum of TP and False Positives (FP)
+* **Recall**: True Positives (TP) ratio with the sum of TP and False Negatives (FN)
+* **F1-score**: The harmonic mean of the precision (P) and recall (R)
+
+Details can be found on scikit-learn documentation here: https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html or on wikipedia directly: https://en.wikipedia.org/wiki/Precision_and_recall
+
+* **IoU**: ratio between the area where the predicted bbox and the ground-truth bbox overlap over the total area covered the both.
+* **mAP50**: calculated using a fixed IoU threshold of 0.5.
+* **mAP50-95**: calculated by averaging the mAP across multiple IoU thresholds, typically 10 points from 0.5 to 0.95.
+
+as explained here: https://www.ultralytics.com/glossary/mean-average-precision-map
+
+### How metrics are computed
+
+Considering that defintions :
+* True positive (TP): Number of instances predicted as `True` and is really `True`
+* False positive (FP): Number of instances predicted as `True` and must be `False`
+* False negative (FN): Number of instances predicted as `False` and would be `True`
+
+The metrics are computed as below :
+- **Precision**: `TP / (TP + FP)`
+- **Recall**: `TP / (TP + FN)`
+- **F1-score**: `2*TP / (2*TP + FP + FN)`
+
+*For classifiers* :
+- we are using the common metric "Top-k Accuracy classification score", defined here https://scikit-learn.org/stable/modules/generated/sklearn.metrics.top_k_accuracy_score.html
+  - **Top-1 acc**: This metric computes the number of times where the correct label is among the top 1 labels predicted.
+  - **Top-5 acc**: This metric computes the number of times where the correct label is among the top 5 labels predicted.
+
+*For object-detection* :
+- **mAP50**: mean average precision on a IoU threshold of 0.5
+- **mAP50-95**: mean average precision on a IoU threshold with 10 points from 0.5 to 0.95
+
+*For segmentation* :
+- **mIoU acc**: mean Intersection over union, the metric is defined by the overlap between the predicted mask segmentation and the ground truth, divided by the total area covered by the union of the two
+- **mAP50-95 mask**: mean average precision on a mean mask IoU threshold with 10 points from 0.5 to 0.95
+
+### Steps to evaluate the accuracy of a generated neural network (object-detection)
+
+NB: This section is illustrated by the jupyter notebook at [eval_map.ipynb](./notebooks/eval_map.ipynb)
+
+From this repository, use one of our packaged model, e.g **YOLOv8s**. Then follow each step below:
+1. Generate the target neural network
+```bash
+./generate networks/object-detection/yolov8s/onnx/network_f16.yaml -d yolov8s
+```
+
+2. Ensure that input and output preparator are included
+```bash
+ls -R yolov8s/
+```
+
+3. Ensure that computation of image pipepline prints the data, label ID and bounding box in verbose mode
+```bash
+./run demo yolov8s utils/sources/cat.jpg --no-replay --save-img --verbose
+```
+**IMPORTANT NOTE**:
+> the script `eval` would trig on the output of the post-processing script
+> when the network detects something, the syntax below can be found *(conf, label ID, bbox[x1, y1, x2, y2])*:
+> `>> [Post-proc] prediction: 0.68 - cat - [113, 47, 351, 462]`
+
+4. Finally, execute the script `eval` with the dataset `coco` (5k images), `coco8` (4 images) or `coco128` (128 images)
+```bash
+./eval yolov8s --metrics=mAP --dataset=coco8
+INFO: Processing images in steps of nb-images : [4]
+Preparing images for inference: 100%|███████████████████████| 4/4 [00:00<00:00, 269.67it/s]
+INFO: Running inference on MPPA 100%|███████████████████████| 4/4 [00:00<00:00
+Post-processing predictions 1/1:100%|███████████████████████| 4/4 [00:00<00:00, 476.08it/s]
+Processing pipeline :           100%|███████████████████████| 1/1 [00:01<00:00,  1.95s/it]
+INFO:
+INFO:                  Class     Images  Instances       Prec     Recall   F1-score      mAP50   mAP50-95
+INFO:                    all          4         17      0.833      0.733      0.762       0.78      0.598
+INFO:                 person          3         10          1        0.4      0.571        0.7      0.314
+INFO:                    dog          1          1          1          1          1      0.995      0.796
+INFO:                  horse          1          2          1          1          1      0.995      0.784
+INFO:               elephant          1          2          0          0          0          0          0
+INFO:               umbrella          1          1          1          1          1      0.995      0.796
+INFO:           potted_plant          1          1          1          1          1      0.995      0.895
+```
+
+The neural network mAP50-95 is here evaluated at **59.8%** and would be less more. This is due to the lack of the
+number of images. Typically, the COCO evaluation dataset is 5K images and final prediction accuracy converges to 
+a final results close to the trained model value. COCO128 is a good aproximation to provide a correct evaluation.
+
+Do not hesitate to compare with ultralytics, following these steps, for example with Ultralytics framework:
+```bash
+pip install ultralytics
+yolo export model=yolov8s.pt format=onnx batch=1 imgsz=640
+yolo val model=yolov8s.onnx data=coco8.yaml batch=1 imgsz=640
+```
+
 ## Custom Layers for extended neural network supoort
 
 According to the Kalray's documentation in KaNN™ manual, users have the possibility to integrate
-custom layers in case layers are not supported by KaNN™. This can be done by following these
+custom layers in case it is not supported by KaNN™. This can be done by following these
 general steps:
 1. Implement the python function callback to ensure that KaNN™ generator is able to support the layer
 2. Implement the layer python class to ensure that arguments are matching with the C-function
@@ -228,21 +351,21 @@ To ensure extended support of all neural networks provided in the repository (su
  * SiLU
 
 Please follow these few steps to use custom layer implementations, for example to support YOLOv8:
-1. Configure _YOUR_ software environment:
+1. Configure your software environment:
 ```bash
 KANN_ENV=$HOME/.local/share/python3-kann-venv
 source /opt/kalray/accesscore/kalray.sh
 source $KANN_ENV/bin/activate
 ```
 
-B. Then, buid custom kernels to run over the MPPA®:
+2. Then, build custom kernels to run over the MPPA®:
 ```bash
 make -BC kann_custom_layers O=$PWD/output
 ```
 
 3. Generate the model:
 ```bash
-PYTHONPATH=$PWD/kann_custom_layers ./generate $PWD/networks/object-detection/yolov8n/onnx/network_f16.yaml -d yolov8n-custom
+PYTHONPATH=$PWD/kann_custom_layers ./generate $PWD/networks/object-detection/yolov8n/onnx/network_f16.yaml -d yolov8n
 ```
 
 4. Run demo with generated the generated directory (`yolov8n` in this example) and the newly complied kernels (.pocl file) for the MPPA®:
@@ -258,6 +381,7 @@ or run the model on CPU target (in order to compare results):
 
 You may also notice a folder called `./notebooks/`  which is available in this repository. It provides additional usage examples. Let's take a look at:
 * [x] [Quick Start](./notebooks/quick_start.ipynb): Generate and run a neural network from the KaNN™ Model Zoo
+* [x] [Evaluate the mAP of an object-detection neural network ](./eval_map.ipynb)
 
 To execute it, please set up your python environment and be sure you could use correctly your preferred web browser
 (firefox, google-chrome, ... for example) :
@@ -293,7 +417,7 @@ Other notebooks will be soon available:
 * [ ] Custom kernel (advanced): Implement a custom kernel to support a specific network
 * [ ] Custom kernel (expert): Optimie a custom kernel to accelerate a specific network
 
+
 Authors:
  + Quentin Muller <qmuller@kalrayinc.com>
  + Björn Striebing <bstriebing@kalrayinc.com>
-

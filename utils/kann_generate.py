@@ -16,36 +16,25 @@ import requests
 import subprocess
 
 from tqdm import tqdm
-from kann_utils import logger
-
+from kann_utils import logger, kHelpFormat, kHelp
 
 URL_HF_PATH = "https://huggingface.co/Kalray/"
 
-class KannHelp(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        print("*" * 80)
-        print("This is a wrapper script to download model from 🤗 and generate model with kann")
-        print("> Usage: kann_generate.py <network_yaml_path> [kann_generate_args]")
-        print("*" * 80)
-        print("\n $ kann generate --help for more informations (is detailed below)\n")
-        cmd_args = ["kann", "generate", "--help"]
-        subprocess.run(cmd_args, check=True)
-        sys.exit(0)
 
-
-def get_model_from(url, dest_dir):
-    model_dir = os.path.dirname(model_path)
+def get_model_from(url, dest_model_path):
+    model_dir = os.path.dirname(dest_model_path)
     logger.info("Model requested directory: {}".format(model_dir))
-    logger.info("Model requested path:      {}".format(model_path))
+    logger.info("Model requested path:      {}".format(dest_model_path))
 
-    if not os.path.exists(model_path):
+    if not os.path.exists(dest_model_path):
         logger.warning('Model does not exists, trying to download from 🤗')
-        model_name = network_dir.split("/")[-2]
-        model_filename = os.path.basename(model_path)
+        model_name = model_dir.split("/")[-3]
+        model_filename = os.path.basename(dest_model_path)
         model_url = os.path.join(
-            URL_HF_PATH, model_name, "resolve", "main", model_filename)
+            url, model_name, "resolve", "main", model_filename)
         model_url += "?download=true"
         os.makedirs(model_dir, exist_ok=True)
+        logger.info(f"request to {model_url}")
         with requests.get(model_url, stream=True) as response:
             if response.status_code == 200:
                 total_size = int(response.headers.get("content-length", 0))
@@ -54,7 +43,7 @@ def get_model_from(url, dest_dir):
                           unit="B", unit_scale=True,
                           desc="Download file from 🤗 {}".format(URL_HF_PATH)) \
                         as progress_bar:
-                    with open(model_path, "wb+") as handle:
+                    with open(dest_model_path, "wb+") as handle:
                         for data in response.iter_content(block_size):
                             progress_bar.update(len(data))
                             handle.write(data)
@@ -62,31 +51,61 @@ def get_model_from(url, dest_dir):
             else:
                 status = False
         if not status:
-            logger.warning('Model does not exists on our 🤗 platform or download failed ... 😢')
-            logger.warning(
-                'It may happen that not all the models have been '
-                'migrated to Kalray HF platform. Please contact support@kalrayinc.com '
-                'to download the model.')
+            logger.error('Model does not exists on our 🤗 platform ... 😢')
+            logger.error('Please contact us to support@kalrayinc.com or report the issue to https://github.com/kalray/kann-model-zoo/issues')
+            sys.exit(1)
 
 
-if __name__ == "__main__":
+def main(args, other_args):
+     # List the neural networks available in the owner file system
+    # located at ./networks/ DIR path
+    models = {}
+    for d in sorted(os.listdir(r"networks")):
+        if os.path.isdir(os.path.join("networks", d)):
+            models[d] = [nn for nn in sorted(os.listdir(os.path.join("networks", d)))
+                            if os.path.isdir(os.path.join("networks", d, nn))]
+    models_list = [v for nn in models.values() for v in nn]
 
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("network_yaml_path", help="Model YAML path")
-    parser.add_argument("--help", action=KannHelp, nargs=0,)
-    parser.add_argument(
-        "--use-nfs", action="store_true",
-        help="use interal url path, located on nfs (ACI and/or internal use only)")
-    parser.add_argument("--debug", action="store_true", help="Run generation with kaNN python API")
+    # Print the neural networks available
+    # from models dict()
+    if args.list:
+        print("\nList of available neural networks:\n")
+        for t in models:
+            print(f"** {t.upper()} **")
+            for i, nn in enumerate(models[t]):
+                print(f" {i:02d}. {nn.lower()}")
+            print("")
+        sys.exit(0)
 
-    args, other_args = parser.parse_known_args()
-    print(args)
-    yaml_file_path = args.network_yaml_path
-    network_dir = os.path.dirname(yaml_file_path)
+    # Define the YAML path network DIR from args
+    # 1. from the list determined above
+    # 2. directly from the relative yaml path
+    else:
+        if args.config_yaml_path is not None:
+            yaml_file_path = args.config_yaml_path
+            network_dir = os.path.dirname(yaml_file_path)
+            if not os.path.isfile(yaml_file_path):
+                raise FileNotFoundError(f"{yaml_file_path} is not a regular YAML file or does not exist ... ")
+
+        elif args.network and args.network.lower() in models_list:
+            model_name = args.network
+            model_family = [t for t, nn in models.items() for v in nn if v == model_name]
+            assert len(model_family) == 1
+            model_family = model_family[0]
+            yaml_file_path = os.path.join(
+                f"networks", model_family, model_name, args.framework, "network_" + args.dtype + ".yaml")
+            network_dir = os.path.dirname(yaml_file_path)
+        else:
+            logger.error(f"Network required not found or not available, get {args.network}\n")
+            # parser.print_help()
+            sys.exit(1)
+
+    # Get the configuration from YAML path
     with open(yaml_file_path, 'r') as yaml_file:
         cfg = yaml.load(yaml_file, Loader=yaml.Loader)
 
-    # check framework used
+    # Check framework used, ONNX is actually the only one supported
+    # since ACE >= 6.0.0
     framework = cfg.get('framework')
     if framework.lower() == "onnx":
         model_path = os.path.abspath(
@@ -95,11 +114,12 @@ if __name__ == "__main__":
         print(f"Unknown framework, {framework} not supported !")
         sys.exit(1)
 
-    # Check if model exists
+    # Check if model exists locally
+    # Otherwise it download it from HuggingFace
     if not os.path.isfile(model_path):
         get_model_from(URL_HF_PATH, model_path)
 
-    # Finally generate
+    # Finally generate the model with KaNN(tm)
     if args.debug:
         import kann
         kann.commons.log_utils.initialize("debug")
@@ -107,3 +127,46 @@ if __name__ == "__main__":
     else:
         cmd_args = ["kann", "generate", yaml_file_path] + other_args
         subprocess.run(cmd_args, check=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(add_help=False, formatter_class=kHelpFormat)
+    parser.add_argument(
+        "--config_yaml_path", "-c",
+        required=False,
+        help="Model YAML path",
+    )
+    parser.add_argument(
+        "--network", "-n",
+        required=False,
+        help="Select model, please use ./generate --list to print all networks available",
+    )
+    parser.add_argument(
+        "--framework", default="onnx",
+        required=False,
+        help="Select framework if different from ONNX",
+    )
+    parser.add_argument(
+        "--dtype", default="f16",
+        required=False, choices=["f16", "i8"],
+        help="Select neural network datatype computation",
+    )
+    parser.add_argument(
+        "--list", "-l", action="store_true",
+        help="List all networks available"
+    )
+    parser.add_argument(
+        "--use-nfs", action="store_true",
+        help="use interal url path, located on nfs (ACI and/or internal use only)"
+    )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Run generation with kaNN python API"
+    )
+    parser.add_argument(
+        "--help", "-h", action=kHelp, nargs=0,
+        help="Display this message"
+    )
+    opt, other_opt = parser.parse_known_args()
+    print(opt, other_opt)
+    main(opt, other_opt)

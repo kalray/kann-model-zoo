@@ -46,13 +46,13 @@ It is composed by:
 
 ACE™ 6.0.0 | KaNN™ 5.5.0 supports: ONNX framework.
 
-## Important notes
+## Important
 
 * Neural networks are available on our **Hugging face plateform** 🤗 [HERE](https://huggingface.co/Kalray).
   Do not hesitate to check model card for details of implementation, sources or license.
 
 * TensorFlow and TensorFlowLite is now deprecated from this ACE™ version (>=6.0.0). All TF networks of the KaNN™
-  Model Zoo have been converted to ONNX format with **tf2onnx** tools.
+  Model Zoo have been converted to ONNX format with [**tf2onnx**](https://github.com/onnx/tensorflow-onnx) tools.
 
 * To generate a neural network compatible for Kalray processor (MPPA®):
   + in FP16, please refer to onnx model (pointed by network_f16.yaml configuration file)
@@ -63,14 +63,16 @@ ACE™ 6.0.0 | KaNN™ 5.5.0 supports: ONNX framework.
 ## WIKI notes
 
 To quickly deploy a neural network on the MPPA®, a WIKI note is available [here](WIKI.md):
-* [KaNN™ framework description](./WIKI.md#kann-framework-description)
-* [Prerequisites: SW environment \& configuration](./WIKI.md#prerequisites-sw-environment--configuration)
-* [How models are packaged](./WIKI.md#how-models-are-packaged)
-* [Generate a model to run on the MPPA®](./WIKI.md#generate-a-model-to-run-on-the-mppa®)
-* [Evaluate the neural network inference on the MPPA®](./WIKI.md#evaluate-the-neural-network-inference-on-the-mppa®)
-* [Run the neural network as a demo](./WIKI.md#run-the-neural-network-as-a-demo)
-* [Custom Layers for extended neural network supoort](./WIKI.md#custom-layers-for-extended-neural-network-supoort)
-* [Jupyter Notebooks](./WIKI.md#jupyter-notebooks)
+
+- [KaNN™ framework description](#kann-framework-description)
+- [Prerequisites: SW environment \& configuration](#prerequisites-sw-environment--configuration)
+- [How models are packaged](#how-models-are-packaged)
+- [Generate a model to run on the MPPA®](#generate-a-model-to-run-on-the-mppa)
+- [Evaluate the neural network inference on the MPPA®](#evaluate-the-neural-network-inference-on-the-mppa)
+- [Run the neural network as a demo](#run-the-neural-network-as-a-demo)
+- [Neural networks accuracy and associated metrics](#neural-networks-accuracy-and-associated-metrics)
+- [Custom Layers for extended neural network supoort](#custom-layers-for-extended-neural-network-supoort)
+- [Jupyter Notebooks](#jupyter-notebooks)
 
 ## Requirements
 
