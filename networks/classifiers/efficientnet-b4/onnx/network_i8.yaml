@@ -1,6 +1,6 @@
 name: EfficientNet-B4
 framework: onnx
-onnx_model: ./models/efficientNet-b4.onnx
+onnx_model: ./models/efficientNet-b4-q.onnx
 onnx_graph_optim: true
 
 input_nodes_name:

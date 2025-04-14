@@ -26,6 +26,6 @@ generate_options:
 extra_data:
     classes: classes.txt
     input_preparators:
-    - input_preparator.py
+        - input_preparator.py
     output_preparator: output_preparator
 
