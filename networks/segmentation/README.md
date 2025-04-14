@@ -2,10 +2,7 @@
 
 ## List of Segmentation Neural Networks
 This repository gives access to following segmentation neural networks main architecture:
-* DeeplabV3+
-* Fully Convolution Network (FCN)
-* U-Net
-* YOLO
+* DeeplabV3+, Fully Convolution Network (FCN), U-Net, YOLO
 
 ## Important notes
 
@@ -36,15 +33,15 @@ The models are listed below, according:
 *NB: MPPA Coolidge V2 processor default frequency is 1.0 GHz*
 
 <!-- START AUTOMATED TABLE -->
-| NAME                                                                            |   FLOPs | Params | mAP-50/95 |  mIoU  | Framework |  Input  | Dataset       | FPS(MPPA) | TOTAL(Mc) | KFLOPS/c |
-|:--------------------------------------------------------------------------------|--------:|-------:|:---------:|:------:|:---------:|:-------:|:--------------|----------:|----------:|---------:|
-| [DeeplabV3Plus-mobilenet-V2](./deeplabv3plus-mobilenetv2/onnx/network_f16.yaml) |  17.4 G |  2.0 M |     -     |   -    |   ONNX    | 512x512 | VOC-COCO 2017 |      86.3 |     11.56 |    1.486 |
-| [DeeplabV3Plus-mobilenet-V3](./deeplabv3plus-mobilenetv3/onnx/network_f16.yaml) |  16.4 G |  8.9 M |     -     | 60.3 % |   ONNX    | 512x512 | VOC-COCO 2017 |         - |         - |        - |
-| [DeeplabV3Plus-Resnet50](./deeplabv3plus-resnet50/onnx/network_f16.yaml)        | 216.1 G | 39.6 M |     -     |   -    |   ONNX    | 416x416 | VOC-COCO 2017 |      27.6 |     36.19 |    1.806 |
-| [FCN-Resnet101](./fcn-resnet101/onnx/network_f16.yaml)                          | 432.2 G | 51.8 M |     -     | 63.7 % |   ONNX    | 512x512 | VOC-COCO 2017 |      15.5 |     64.37 |    6.730 |
-| [FCN-Resnet50](./fcn-resnet50/onnx/network_f16.yaml)                            | 276.9 G | 32.9 M |     -     | 60.5 % |   ONNX    | 512x512 | VOC-COCO 2017 |      21.8 |     45.95 |    6.047 |
-| [UNet-2D-indus](./unet2d-tiny-ind/onnx/network_f16.yaml)                        |  36.7 G | 1.85 M |     -     |   -    |   ONNX    | 512x512 | DAGM-2007     |     102.3 |      9.72 |    3.768 |
-| [UNet-2D-medical](./unet2d-tiny-med/onnx/network_f16.yaml)                      |  24.4 G |  7.7 M |     -     |   -    |   ONNX    | 256x256 | MRI-BRAIN     |     385.3 |      2.59 |    9.319 |
-| [YOLOv8m-seg](./yolov8m-seg/onnx/network_f16.yaml)                              | 105.2 G | 27.2 M |  40.8 %   |   -    |   ONNX    | 640x640 | COCO 2017     |      79.1 |     12.63 |    8.339 |
-| [YOLOv8n-seg](./yolov8n-seg/onnx/network_f16.yaml)                              |  12.2 G |  3.4 M |  30.5 %   |   -    |   ONNX    | 640x640 | COCO 2017     |     264.2 |      3.79 |    3.232 |
+| NAME                                                                            |   FLOPs | Params | mAP-50/95 |  mIoU  | Framework |  Input  | Dataset       | 🤗 HF repo-id                                                                                | FPS(MPPA) | TOTAL(Mc) | KFLOPS/c |
+| :------------------------------------------------------------------------------ | ------: | -----: | :-------: | :----: | :-------: | :-----: | :------------ | ------------------------------------------------------------------------------------------- | --------: | --------: | -------: |
+| [DeeplabV3Plus-mobilenet-V2](./deeplabv3plus-mobilenetv2/onnx/network_f16.yaml) |  17.4 G |  2.0 M |     -     |   -    |   ONNX    | 512x512 | VOC-COCO 2017 | [Kalray/deeplabv3plus-mobilenetv2](https://huggingface.co/Kalray/deeplabv3plus-mobilenetv2) |      86.3 |     11.56 |    1.486 |
+| [DeeplabV3Plus-mobilenet-V3](./deeplabv3plus-mobilenetv3/onnx/network_f16.yaml) |  16.4 G |  8.9 M |     -     | 60.3 % |   ONNX    | 512x512 | VOC-COCO 2017 | []()                                                                                        |         - |         - |        - |
+| [DeeplabV3Plus-Resnet50](./deeplabv3plus-resnet50/onnx/network_f16.yaml)        | 216.1 G | 39.6 M |     -     |   -    |   ONNX    | 416x416 | VOC-COCO 2017 | [Kalray/deeplabv3plus-resnet50](https://huggingface.co/Kalray/deeplabv3plus-resnet50)       |      27.6 |     36.19 |    1.806 |
+| [FCN-Resnet101](./fcn-resnet101/onnx/network_f16.yaml)                          | 432.2 G | 51.8 M |     -     | 63.7 % |   ONNX    | 512x512 | VOC-COCO 2017 | [Kalray/fcn-resnet50](https://huggingface.co/Kalray/fcn-resnet50)                           |      15.5 |     64.37 |    6.730 |
+| [FCN-Resnet50](./fcn-resnet50/onnx/network_f16.yaml)                            | 276.9 G | 32.9 M |     -     | 60.5 % |   ONNX    | 512x512 | VOC-COCO 2017 | [Kalray/fcn-resnet101](https://huggingface.co/Kalray/fcn-resnet101)                         |      21.8 |     45.95 |    6.047 |
+| [UNet-2D-indus](./unet2d-tiny-ind/onnx/network_f16.yaml)                        |  36.7 G | 1.85 M |     -     |   -    |   ONNX    | 512x512 | DAGM-2007     | [Kalray/unet2d-tiny-ind](https://huggingface.co/Kalray/unet2d-tiny-ind)                     |     102.3 |      9.72 |    3.768 |
+| [UNet-2D-medical](./unet2d-tiny-med/onnx/network_f16.yaml)                      |  24.4 G |  7.7 M |     -     |   -    |   ONNX    | 256x256 | MRI-BRAIN     | [Kalray/unet2d-tiny-med](https://huggingface.co/Kalray/unet2d-tiny-med)                     |     385.3 |      2.59 |    9.319 |
+| [YOLOv8m-seg](./yolov8m-seg/onnx/network_f16.yaml)                              | 105.2 G | 27.2 M |  40.8 %   |   -    |   ONNX    | 640x640 | COCO 2017     | [Kalray/yolov8m-seg](https://huggingface.co/Kalray/yolov8m-seg)                             |      79.1 |     12.63 |    8.339 |
+| [YOLOv8n-seg](./yolov8n-seg/onnx/network_f16.yaml)                              |  12.2 G |  3.4 M |  30.5 %   |   -    |   ONNX    | 640x640 | COCO 2017     | [Kalray/yolov8n-seg](https://huggingface.co/Kalray/yolov8n-seg)                             |     264.2 |      3.79 |    3.232 |
 <!-- END AUTOMATED TABLE -->
