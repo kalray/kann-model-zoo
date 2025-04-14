@@ -1,6 +1,6 @@
 name: RetinaNet-R50-FPN
 framework: onnx
-onnx_model: models/retinanet-resnet50-fpn-800.onnx
+onnx_model: models/retinanet-resnext50-fpn-800.onnx
 onnx_graph_optim: true
 
 input_nodes_name:
