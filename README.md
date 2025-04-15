@@ -6,7 +6,7 @@
 ![KaNN-5.5.0](https://img.shields.io/badge/KaNN--5.5.0-red)
 ![Classification](https://img.shields.io/badge/Classification-27-blue)
 ![Object-Detection](https://img.shields.io/badge/Object--detection-32-blue)
-![Segmentation](https://img.shields.io/badge/Segmentation-9-blue)</br>
+![Segmentation](https://img.shields.io/badge/Segmentation-9-blue)
 ![A](https://img.shields.io/badge/HuggingFace%20🤗-orange)</br>
 
 The KaNN™ Model Zoo repository offers a collection of neural network models **ready to compile & run** on Kalray's MPPA®
@@ -37,21 +37,21 @@ The examples below illustrate the kind of predictions obtained for each applicat
 
 ## Kalray Neural Network (KaNN™) SDK
 
-Kalray Neural Network (KaNN™) is a SDK included in the AccessCore Embedded (ACE) compute offer to optimize AI inference on MPPA®. 
+Kalray Neural Network (KaNN™) is a SDK included in the AccessCore Embedded (ACE™) compute offer to optimize AI inference on MPPA®. 
 It is composed by:
 
 * **KaNN™ generator** : A python wheel to parse, optimize and paralellize an intermediate representation of a neural
   network. Thanks to the runtime, it gives you then the opportunity to run the algorithm directly on the MPPA®
 * **KaNN™ runtime** : Optimized libraries (in ASM/C/C++) to execute each operation node.
 
-ACE 6.0.0 | KaNN™ 5.5.0 supports: ONNX framework.
+ACE™ 6.0.0 | KaNN™ 5.5.0 supports: ONNX framework.
 
 ## Important notes
 
 * Neural networks are available on our **Hugging face plateform** 🤗 [HERE](https://huggingface.co/Kalray).
   Do not hesitate to check model card for details of implementation, sources or license.
 
-* TensorFlow and TensorFlowLite is now deprecated from this ACE version (>=6.0.0). All TF networks of the KaNN™
+* TensorFlow and TensorFlowLite is now deprecated from this ACE™ version (>=6.0.0). All TF networks of the KaNN™
   Model Zoo have been converted to ONNX format with **tf2onnx** tools.
 
 * To generate a neural network compatible for Kalray processor (MPPA®):
@@ -60,7 +60,7 @@ ACE 6.0.0 | KaNN™ 5.5.0 supports: ONNX framework.
 
 * Interesting to run faster ? please contact our support to optimize your use case at support@kalrayinc.com
 
-## Contents
+## WIKI notes
 
 To quickly deploy a neural network on the MPPA®, a WIKI note is available [here](WIKI.md):
 * [KaNN™ framework description](./WIKI.md#kann-framework-description)
@@ -71,35 +71,6 @@ To quickly deploy a neural network on the MPPA®, a WIKI note is available [here
 * [Run the neural network as a demo](./WIKI.md#run-the-neural-network-as-a-demo)
 * [Custom Layers for extended neural network supoort](./WIKI.md#custom-layers-for-extended-neural-network-supoort)
 * [Jupyter Notebooks](./WIKI.md#jupyter-notebooks)
-
-CNN models are groupted by three types of machine vision applications:
-* [Classification](./networks/classifiers/README.md)
-* [Object Detection](./networks/object-detection/README.md)
-* [Segmentation](./networks/segmentation/README.md)
-
-The examples below illustrate the kind of predictions obtained for each application type:
-
-| Classification <p> (e.g. SqueezeNet)                                     | Object Detection <p> (e.g. YOLOv8n)                                       | Segmentation <p> (e.g. Deeplabv3+)                                      |
-|--------------------------------------------------------------------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------|
-| <img height="240" width="240" src="./utils/materials/cat_class.jpg"></a> | <img height="240" width="240" src="./utils/materials/cat_detect.jpg"></a> | <img height="240" width="240" src="./utils/materials/cat_segm.jpg"></a> |
-
-*images has been realized using model from this repository and KaNN™ SDK solution (ACE-5.4.0)
-
-## List of Neural Networks
-
-All networks are proposed into selected Neural Network architectures, such as:
-
-__Classifiers__ : complete list can be found [here](./networks/classifiers/README.md)
-
-* DenseNet, EfficientNet, Inception, MobileNet, NasNet, ResNet, RegNet, SqueezeNet, VGG
-
-__Object Detection__ : complete list can be found [here](./networks/object-detection/README.md)
-
-* EfficientDet, RetinatNet, SSD, YOLO
-
-__Segmentation__ : complete list can be found [here](./networks/segmentation/README.md)
-
-* DeeplabV3+, Fully Convolution Network (FCN), U-Net, YOLO
 
 ## Requirements
 

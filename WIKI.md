@@ -12,13 +12,13 @@ KaNN™ Model Zoo complements the KaNN™ SDK, which streamlines model generatio
 
 ## Table of contents
 
-- [WIKI - Kalray Neural Network Models Zoo](#wiki---kalray-neural-network-models-zoo)
+- [WIKI - KaNN™ Model Zoo](#wiki---kann-model-zoo)
   - [Table of contents](#table-of-contents)
-  - [KaNN™ framework description](#kann™-framework-description)
+  - [KaNN™ framework description](#kann-framework-description)
   - [Prerequisites: SW environment \& configuration](#prerequisites-sw-environment--configuration)
   - [How models are packaged](#how-models-are-packaged)
-  - [Generate a model to run on the MPPA®](#generate-a-model-to-run-on-the-mppa®)
-  - [Evaluate the neural network inference on the MPPA®](#evaluate-the-neural-network-inference-on-the-mppa®)
+  - [Generate a model to run on the MPPA®](#generate-a-model-to-run-on-the-mppa)
+  - [Evaluate the neural network inference on the MPPA®](#evaluate-the-neural-network-inference-on-the-mppa)
   - [Run the neural network as a demo](#run-the-neural-network-as-a-demo)
   - [Custom Layers for extended neural network supoort](#custom-layers-for-extended-neural-network-supoort)
   - [Jupyter Notebooks](#jupyter-notebooks)
@@ -93,13 +93,15 @@ Each model is packaged to be compiled and run with KaNN™ SDK. In each model di
 Models LICENSE and SOURCES are described individually in our HuggingFace space, available at
 https://huggingface.co/Kalray.
 
-<img width="25%" alignment="center" src="./utils/materials/Hugging_Face_logo.svg"></a></br>
+<p align="center">
+  <img width="25%" alignment="center" src="./utils/materials/Hugging_Face_logo.svg"></a></br>
+</p>
 
 ## Generate a model to run on the MPPA®
 
 Use the following command to generate an model to run on the MPPA®:
 ```bash
-# syntax; $ ./generate <configuration_file.yaml> -d <generated_path_dir>
+# syntax: $ ./generate <configuration_file.yaml> -d <generated_path_dir>
 ./generate networks/object-detection/yolov8n-relu/onnx/network_f16.yaml -d yolov8n
 ```
 
@@ -110,7 +112,6 @@ It will provide you into the path directory `generated_path_dir`, here called "y
 
 Please refer to Kalray's documentation and KaNN user manual provided for more details !
 
-
 ## Evaluate the neural network inference on the MPPA®
 
 Kalray's toolchain integrates its own host application named `kann_opencl_cnn` to run compiled models.
@@ -120,25 +121,28 @@ To evaluate the performance of the neural network on the MPPA®, 2 manners are p
 
 Use the following command to start quickly the inference:
 ```bash
-# $ ./run infer <generated_path_dir>
+# ./run infer <generated_path_dir>
 ./run infer yolov8n
 ```
 or
 ```bash
-# $ kann run <generated_path_dir> --nb-frames=25
+# kann run <generated_path_dir> --nb-frames=25
 kann run yolov8n -n 25
 ```
 
 > **TIPS 😎 ...**
 Now, with kann it is possible to evaluate directly an ONNX model from HuggingFace with this method:
   ```bash
-  # $ kann generate --model=<HF_REPO_ID>/<FILENAME.onnx> -d <GEN_DIR> 
-  # $ kann run <GEN_DIR>
+  # kann generate --model=<HF_REPO_ID>/<FILENAME.onnx> -d <GEN_DIR> 
+  # kann run <GEN_DIR>
   kann generate --model=Kalray/yolov8n-relu/yolov8n-relu-s.optimized.onnx \
-    --quantize_fp32_to_fp16=True -d yolov8n
+    --quantize_fp32_to_fp16=True -d yolov8n-mppa-fp16
   # then
-  kann run yolov8n
+  kann run yolov8n-mppa-fp16
   ```
+NB: input and output processing scripts are not included in this case, only the IR model is generate from ONNX file.
+In the case you want to run a demo pipeline, please use the packaged models included in **KaNN Model Zoo** or include
+your own scripts.
 
 ## Run the neural network as a demo
 
@@ -153,7 +157,7 @@ Use the following command to start inference with the newly generated model
  by the OpenCV Python API.
 
 ```bash
-# $ ./run demo <generated_path_dir> <source_file_path>
+# ./run demo <generated_path_dir> <source_file_path>
 ./run demo yolov8n ./utils/sources/cat.jpg
 ```
 
@@ -184,25 +188,28 @@ To disable the display:
 
 To disable the replay (for a video or a image):
 ```bash
-$ ./run demo yolov8n ./utils/sources/street/street_0.jpg --no-replay
+./run demo yolov8n ./utils/sources/street/street_0.jpg --no-replay
 ```
 
 Save the last frame annotated into the current dir:
 ```bash
-$ ./run demo yolov8n ./utils/sources/street/street_0.jpg --no-replay --save-img --verbose
+./run demo yolov8n ./utils/sources/street/street_0.jpg --no-replay --save-img --verbose
 ```
 
 To run on the CPU target (in order to compare results):
 ```bash
-$ ./run demo --device=cpu yolov8n ./utils/sources/street/street_0.jpg --no-replay --save-img --verbose
+./run demo --device=cpu yolov8n ./utils/sources/street/street_0.jpg --no-replay --save-img --verbose
 ```
 
 Demonstration scripts are provided in python.
 
-> **PLEASE NOTE** - `kann_opencl_cnn` is a simple and generic host application for neural network inference on MPPA®. It does not use pipelining. Thus video pipeline is **NOT FULLY OPTIMIZED** and  requires custom developments to benefit of the full performance of the MPPA®, depending of your own environment and system. Do not hesitate to contact our services <support@kalrayinc.com> to optimize your solution.
+> **PLEASE NOTE**
+> `kann_opencl_cnn` is a simple and generic host application for neural network inference on MPPA®.
+> It does not use pipelining. Thus video pipeline is **NOT FULLY OPTIMIZED** and  requires custom developments to 
+> benefit of the full performance of the MPPA®, depending of your own environment and system. Do not hesitate to 
+> contact our services <support@kalrayinc.com> to optimize your solution.
 
 Please take a look to our notebooks included in the repository (see [Jupyter Notebooks](#jupyter-notebooks))
-
 
 ## Custom Layers for extended neural network supoort
 
@@ -235,16 +242,16 @@ make -BC kann_custom_layers O=$PWD/output
 
 3. Generate the model:
 ```bash
-PYTHONPATH=$PWD/kann_custom_layers ./generate $PWD/networks/object-detection/yolov8n/onnx/network_best.yaml -d yolov8n
+PYTHONPATH=$PWD/kann_custom_layers ./generate $PWD/networks/object-detection/yolov8n/onnx/network_f16.yaml -d yolov8n-custom
 ```
 
 4. Run demo with generated the generated directory (`yolov8n` in this example) and the newly complied kernels (.pocl file) for the MPPA®:
 ```bash
-./run --pocl-dir=$PWD/output/opencl_kernels demo --device=mppa yolov8n ./utils/sources/cat.jpg --verbose
+./run --pocl-dir=$PWD/output/opencl_kernels demo --device=mppa yolov8n-custom ./utils/sources/cat.jpg --verbose
 ```
 or run the model on CPU target (in order to compare results):
 ```bash
-./run demo --device=cpu yolov8n ./utils/sources/cat.jpg --verbose
+./run demo --device=cpu yolov8n-custom ./utils/sources/cat.jpg --verbose
 ```
 
 ## Jupyter Notebooks
