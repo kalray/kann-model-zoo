@@ -29,9 +29,9 @@ CNN models are grouped by three types of machine vision applications:
 
 The examples below illustrate the kind of predictions obtained for each application type:
 
-| Classification <p> (e.g. SqueezeNet)                                     | Object Detection <p> (e.g. YOLOv8n)                                       | Segmentation <p> (e.g. Deeplabv3+)                                      |
-|--------------------------------------------------------------------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------|
-| <img height="240" width="240" src="./utils/materials/cat_class.jpg"></a> | <img height="240" width="240" src="./utils/materials/cat_detect.jpg"></a> | <img height="240" width="240" src="./utils/materials/cat_segm.jpg"></a> |
+| Classification <p> (e.g. SqueezeNet)                                      | Object Detection <p> (e.g. YOLOv8n)                                        | Segmentation <p> (e.g. Deeplabv3+)                                       |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| <img height="240" width="100%" src="./utils/materials/cat_class.jpg"></a> | <img height="240" width="100%" src="./utils/materials/cat_detect.jpg"></a> | <img height="240" width="100%" src="./utils/materials/cat_segm.jpg"></a> |
 
 **images have been generated from this repository and KaNN™ SDK solution (ACE 5.4.0)*
 
@@ -76,17 +76,24 @@ To quickly deploy a neural network on the MPPA®, a WIKI note is available [here
 
 ### Hardware requirements
 
-Host machine(s):
+#### Host machine:
 
 * x86_64 CPU
-* DDR RAM 8 GB min
-* HDD disk 32 GB min
-* PCIe Gen3 min, Gen4 recommended
+* DDR RAM > 8 GB
+* HDD disk > 32 GB
+* PCIe >= Gen3, Gen4 x16 recommended
 
-Acceleration card(s):
+#### Acceleration cards:
 
-* ![A](https://img.shields.io/badge/Coolidge2-K300-g)
-* ![A](https://img.shields.io/badge/Coolidge2-Turbocard4-g)
+MPPA Coolidge2 product brief is available [here](https://www.kalrayinc.com/wp-content/uploads/2023/10/Kalray_MPPA-Coolidge_flyer_2P_NoNda_EXTERNAL_9.08.pdf)
+
+| KALRAY Products                                           | links                                                                     | TFLOPs (FP16) | TOPs (INT8) |
+| :-------------------------------------------------------- | :------------------------------------------------------------------------ | :-----------: | :---------: |
+| ![A](https://img.shields.io/badge/Coolidge2-Turbocard4-g) | [TC4](https://www.kalrayinc.com/products/kalray-processors/#turbocard4)   |      100      |     200     |
+| ![A](https://img.shields.io/badge/Coolidge2-K300-blue)    | [K300](https://www.kalrayinc.com/products/kalray-processors/#k300-family) |      25       |     50      |
+
+**data are provided for MPPA frequency @ 1.2GHz (scalable)*
+***compute capabilities (FLOPs/OPs) are given for dense tensors*
 
 ### Software requirements
 

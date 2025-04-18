@@ -35,20 +35,21 @@ This repository gives access to following segmentation neural networks main arch
 
 The models are listed below, according:
   + The accuracy metrics (mAP50/95-mask or mIoU for segmentation)
-  + MPPA performance at **batch 1** in :
-    * Frames per second from MPPA device
+  + Performance is given at **batch 1** per MPPA in :
+    * Frame per second from device point of view
 
-*NB: MPPA Coolidge V2 processor default frequency is 1.0 GHz in ACE 6.0.0*
+See more about our products here: [Coolidge2, K300, TC4](../../README.md#acceleration-cards)
 
 <!-- START AUTOMATED TABLE -->
-| NAME                                                                            |   FLOPs | Params | mAP-50/95 |  mIoU  | Dtype |  Input  | Dataset               | 🤗 HF repo-id                                                                                | FPS (MPPA) |
-| :------------------------------------------------------------------------------ | ------: | -----: | :-------: | :----: | :---: | :-----: | :-------------------- | ------------------------------------------------------------------------------------------- | --------: |
-| [DeeplabV3Plus-mobilenet-V2](./deeplabv3plus-mobilenetv2/onnx/network_f16.yaml) |  17.4 G |  2.0 M |     -     | 55.3 % | FP16  | 512x512 | PASCAL-VOC            | [Kalray/deeplabv3plus-mobilenetv2](https://huggingface.co/Kalray/deeplabv3plus-mobilenetv2) |      86.3 |
-| [DeeplabV3Plus-Resnet50](./deeplabv3plus-resnet50/onnx/network_f16.yaml)        | 216.1 G | 39.6 M |     -     | 60.8 % | FP16  | 416x416 | PASCAL-VOC            | [Kalray/deeplabv3plus-resnet50](https://huggingface.co/Kalray/deeplabv3plus-resnet50)       |      27.6 |
-| [FCN-Resnet101](./fcn-resnet101/onnx/network_f16.yaml)                          | 432.2 G | 51.8 M |     -     | 63.7 % | FP16  | 512x512 | PASCAL-VOC / COCO2017 | [Kalray/fcn-resnet50](https://huggingface.co/Kalray/fcn-resnet50)                           |      15.5 |
-| [FCN-Resnet50](./fcn-resnet50/onnx/network_f16.yaml)                            | 276.9 G | 32.9 M |     -     | 60.5 % | FP16  | 512x512 | PASCAL-VOC / COCO2017 | [Kalray/fcn-resnet101](https://huggingface.co/Kalray/fcn-resnet101)                         |      21.8 |
-| [UNet-2D-indus](./unet2d-tiny-ind/onnx/network_f16.yaml)                        |  36.7 G | 1.85 M |     -     |   -    | FP16  | 512x512 | DAGM-2007             | [Kalray/unet2d-tiny-ind](https://huggingface.co/Kalray/unet2d-tiny-ind)                     |     102.3 |
-| [UNet-2D-medical](./unet2d-tiny-med/onnx/network_f16.yaml)                      |  24.4 G |  7.7 M |     -     |   -    | FP16  | 256x256 | MRI-BRAIN             | [Kalray/unet2d-tiny-med](https://huggingface.co/Kalray/unet2d-tiny-med)                     |     385.3 |
-| [YOLOv8m-seg](./yolov8m-seg/onnx/network_f16.yaml)                              | 105.2 G | 27.2 M |  40.8 %   |   -    | FP16  | 640x640 | COCO 2017             | [Kalray/yolov8m-seg](https://huggingface.co/Kalray/yolov8m-seg)                             |      79.1 |
-| [YOLOv8n-seg](./yolov8n-seg/onnx/network_f16.yaml)                              |  12.2 G |  3.4 M |  30.5 %   |   -    | FP16  | 640x640 | COCO 2017             | [Kalray/yolov8n-seg](https://huggingface.co/Kalray/yolov8n-seg)                             |     264.2 |
+| NAME                                                                            |   FLOPs | Params | mAP-50/95 |  mIoU  | Dtype |  Input  | Dataset               | 🤗 HF repo-id                                                                                | FPS (K300) | FPS (TC4) |
+| :------------------------------------------------------------------------------ | ------: | -----: | :-------: | :----: | :---: | :-----: | :-------------------- | ------------------------------------------------------------------------------------------- | ---------: | --------: |
+| [DeeplabV3Plus-mobilenet-V2](./deeplabv3plus-mobilenetv2/onnx/network_f16.yaml) |  17.4 G |  2.0 M |     -     | 55.3 % | FP16  | 512x512 | PASCAL-VOC            | [Kalray/deeplabv3plus-mobilenetv2](https://huggingface.co/Kalray/deeplabv3plus-mobilenetv2) |       86.3 |       345 |
+| [DeeplabV3Plus-Resnet50](./deeplabv3plus-resnet50/onnx/network_f16.yaml)        | 216.1 G | 39.6 M |     -     | 60.8 % | FP16  | 416x416 | PASCAL-VOC            | [Kalray/deeplabv3plus-resnet50](https://huggingface.co/Kalray/deeplabv3plus-resnet50)       |       27.6 |       110 |
+| [FCN-Resnet101](./fcn-resnet101/onnx/network_f16.yaml)                          | 432.2 G | 51.8 M |     -     | 63.7 % | FP16  | 512x512 | PASCAL-VOC / COCO2017 | [Kalray/fcn-resnet50](https://huggingface.co/Kalray/fcn-resnet50)                           |       15.5 |        62 |
+| [FCN-Resnet50](./fcn-resnet50/onnx/network_f16.yaml)                            | 276.9 G | 32.9 M |     -     | 60.5 % | FP16  | 512x512 | PASCAL-VOC / COCO2017 | [Kalray/fcn-resnet101](https://huggingface.co/Kalray/fcn-resnet101)                         |       21.8 |        87 |
+| [UNet-2D-indus](./unet2d-tiny-ind/onnx/network_f16.yaml)                        |  36.7 G |  1.8 M |     -     |   -    | FP16  | 512x512 | DAGM-2007             | [Kalray/unet2d-tiny-ind](https://huggingface.co/Kalray/unet2d-tiny-ind)                     |      102.3 |       409 |
+| [UNet-2D-medical](./unet2d-tiny-med/onnx/network_f16.yaml)                      |  24.4 G |  7.7 M |     -     |   -    | FP16  | 256x256 | MRI-BRAIN             | [Kalray/unet2d-tiny-med](https://huggingface.co/Kalray/unet2d-tiny-med)                     |      385.3 |      1541 |
+| [YOLOv8m-seg](./yolov8m-seg/onnx/network_f16.yaml)                              | 105.2 G | 27.2 M |  40.8 %   |   -    | FP16  | 640x640 | COCO 2017             | [Kalray/yolov8m-seg](https://huggingface.co/Kalray/yolov8m-seg)                             |       79.1 |       316 |
+| [YOLOv8n-seg](./yolov8n-seg/onnx/network_f16.yaml)                              |  12.2 G |  3.4 M |  30.5 %   |   -    | FP16  | 640x640 | COCO 2017             | [Kalray/yolov8n-seg](https://huggingface.co/Kalray/yolov8n-seg)                             |      264.2 |      1056 |
 <!-- END AUTOMATED TABLE -->
+*NB: MPPA Coolidge V2 processor default frequency is 1.0 GHz in ACE 6.0.0*
