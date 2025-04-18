@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
+import cv2
 import sys
 import numpy
-import cv2
-import os
 import itertools as it
-import math
-from collections import OrderedDict
-from PIL import Image
-
 
 IMG_RES = 2 ** 8
 IMG_WIDTH, IMG_HEIGHT = 512, 512
@@ -19,17 +14,14 @@ def prepare_img(img, out_dtype=numpy.float32):
     # resize dimension order is (height,width) in numpy but (width, height) in opencv
     if img.shape[0:2] != (IMG_HEIGHT, IMG_WIDTH):
         mat = cv2.resize(mat, (IMG_HEIGHT, IMG_WIDTH), interpolation=cv2.INTER_CUBIC)
-        # mat = numpy.array(Image.fromarray(mat).resize((IMG_HEIGHT, IMG_WIDTH)))
-    # Get the Values between 0 and 1 - BGR to RGB
-    # mat = mat[..., ::-1] / (IMG_RES - 1)
     return mat.astype(out_dtype)
 
 
 def image_stream(filename):
-    ''' Read and prepare the sequence of images of <filename>.
+    """ Read and prepare the sequence of images of <filename>.
       If <filename> is an int, use it as a webcam ID.
       Otherwise <filename> should be the name of an image, video
-      file, or image sequence of the form name%02d.jpg '''
+      file, or image sequence of the form name%02d.jpg """
     try: src = int(filename)
     except ValueError: src = filename
     stream = cv2.VideoCapture(src)
@@ -43,7 +35,7 @@ def image_stream(filename):
 
 
 def batches_extraction(stream):
-    ''' extract batches of images from a python generator of prepared images '''
+    """ extract batches of images from a python generator of prepared images """
     batch = 1
     while True:
         imgs = list(it.islice(stream, batch))
