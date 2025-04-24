@@ -1,3 +1,9 @@
+###
+# Copyright (C) 2025 Kalray SA. All rights reserved.
+# This code is Kalray proprietary and confidential.
+# Any use of the code for whatever purpose is subject
+# to specific written permission of Kalray SA.
+###
 palette = {
     'background':   [0, 0, 0],
     'person':       [0, 128, 0],

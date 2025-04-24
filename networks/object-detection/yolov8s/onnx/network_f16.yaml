@@ -15,7 +15,7 @@ output_nodes_name:
     - "/model.22/Concat_1_output_0"
     - "/model.22/Concat_2_output_0"
 output_nodes_shape:
-    - [80, 1, 80, 144 ]
+    - [80, 1, 80, 144]
     - [40, 1, 40, 144]
     - [20, 1, 20, 144]
 output_nodes_dtype:
@@ -24,15 +24,9 @@ output_nodes_dtype:
     - "float32"
 
 generate_options:
-    arch: "kv3-2"
     quantize_fp32_to_fp16: true
-    data_buffer_size: 6240000
-    code_buffer_size: 20000
     threshold_image_to_ddr: 10000000
-    threshold_max_params_size: 500000
     ddr_images_tiles_size: 65535
-    splitdepth_corrector_ratio: 256.0
-    max_live_range: 20
 
 extra_data:
     classes: classes.txt

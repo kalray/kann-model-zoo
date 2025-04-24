@@ -20,15 +20,11 @@ output_nodes_shape:
     - [20, 1, 20, 144]
 
 generate_options:
-    arch: "kv3-2"
     quantize_fp32_to_fp16: true
     data_buffer_size: 7560000
-    code_buffer_size: 20000
     threshold_image_to_ddr: 50000000
     threshold_max_params_size: 500000
     ddr_images_tiles_size: 65535
-    splitdepth_corrector_ratio: 256.0
-    max_live_range: 20
 
 extra_data:
     classes: classes.txt
