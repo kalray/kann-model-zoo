@@ -1,55 +1,80 @@
 #!/usr/bin/env python3
-import sys
-import numpy
-import cv2
-import os
-import itertools as it
-import math
-from collections import OrderedDict
 
-def prepare_img(mat):
+###
+# Copyright (C) 2025 Kalray SA. All rights reserved.
+# This code is Kalray proprietary and confidential.
+# Any use of the code for whatever purpose is subject
+# to specific written permission of Kalray SA.
+###
+
+import sys
+import cv2
+import numpy
+import itertools as it
+
+from PIL import Image
+
+
+def letterbox_image(image, size):
+    """ resize image with unchanged aspect ratio using padding """
+    image = Image.fromarray(image)
+    iw, ih = image.size
+    w, h = size
+    scale = min(w/iw, h/ih)
+    nw = int(iw*scale)
+    nh = int(ih*scale)
+    image = image.resize((nw,nh), Image.BICUBIC)
+    new_image = Image.new('RGB', size, (114,114,114))
+    new_image.paste(image, ((w-nw)//2, (h-nh)//2))
+    assert new_image.size == size
+    return new_image
+
+
+def prepare_img(mat, out_dtype=numpy.float32):
     mat = numpy.asarray(mat, dtype=numpy.uint8, order='C')
     mat = numpy.flip(mat, axis=-1)
-    # resize dimenension order is (height,width) in numpy but (width,height) in opencv
-    new_h, new_w = 416, 416
-    if  mat.shape[0:2] != (new_h, new_w):
-        mat = cv2.resize(mat, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
-    # Get the Values between 0 and 1
-    #mat = mat.astype(numpy.float32) / numpy.float32(255) # It is down into the CNN
-    mat = numpy.asarray(mat, dtype=numpy.float32, order='C')
-    return mat
+    model_image_size = (416, 416)
+    boxed_image = letterbox_image(mat, tuple(reversed(model_image_size)))
+    image_data = numpy.array(boxed_image, dtype='float32')
+    image_data /= 255.
+    return image_data
+
 
 def image_stream(filename):
-  ''' Read and prepare the sequence of images of <filename>.
+    """ 
+    Read and prepare the sequence of images of <filename>.
     If <filename> is an int, use it as a webcam ID.
     Otherwise <filename> should be the name of an image, video
-    file, or image sequence of the form name%02d.jpg '''
-  try: src = int(filename)
-  except ValueError: src = filename
-  stream = cv2.VideoCapture(src)
-  if not stream.isOpened():
-    raise ValueError('could not open stream {!r}'.format(src))
-  while True:
-    ok, frame = stream.read()
-    if not ok:
-      break
-    yield prepare_img(frame)
+    file, or image sequence of the form name%02d.jpg
+    """
+    try: src = int(filename)
+    except ValueError: src = filename
+    stream = cv2.VideoCapture(src)
+    if not stream.isOpened():
+        raise ValueError('could not open stream {!r}'.format(src))
+    while True:
+        ok, frame = stream.read()
+        if not ok:
+            break
+        yield prepare_img(frame)
+
 
 def batches_extraction(stream):
-  ''' extract batches of images from a python generator of prepared images '''
-  batch = 1
-  while True:
-    imgs = list(it.islice(stream, batch))
-    if imgs == []:
-      break
-    while len(imgs) != batch: # last batch might not be full
-      imgs.append(numpy.zeros(imgs[0].shape, dtype=imgs[0].dtype))
-    # interleave the batch as required by kann (HBWC axes order)
-    # note: could use np.stack(axis=1) here, but it's not available in np 1.7.0
-    for i in range(len(imgs)):
-      imgs[i] = numpy.reshape(imgs[i], imgs[i].shape[:1]+(1,)+imgs[i].shape[1:])
-    imgs = numpy.concatenate(imgs, axis=1)
-    yield imgs
+    """ extract batches of images from a python generator of prepared images """
+    batch = 1
+    while True:
+        imgs = list(it.islice(stream, batch))
+        if imgs == []:
+            break
+        while len(imgs) != batch: # last batch might not be full
+            imgs.append(numpy.zeros(imgs[0].shape, dtype=imgs[0].dtype))
+        # interleave the batch as required by kann (HBWC axes order)
+        # note: could use np.stack(axis=1) here, but it's not available in np 1.7.0
+        for i in range(len(imgs)):
+            imgs[i] = numpy.reshape(imgs[i], imgs[i].shape[:1]+(1,)+imgs[i].shape[1:])
+        imgs = numpy.concatenate(imgs, axis=1)
+        yield imgs
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
@@ -60,4 +85,3 @@ if __name__ == '__main__':
     with open(sys.argv[1], 'w') as dest:
       for imgs in batches_extraction(stream):
         imgs.tofile(dest, '')
-
