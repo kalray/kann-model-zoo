@@ -92,9 +92,25 @@ def main(args, other_args):
             model_family = [t for t, nn in models.items() for v in nn if v == model_name]
             assert len(model_family) == 1
             model_family = model_family[0]
+
+            # add an interaction with the user if multiple configurations are found
+            network_dir = os.path.join(f"networks", model_family, model_name, args.framework)
+            list_of_yaml = sorted([f for f in os.listdir(network_dir) if f.split('.')[-1] == "yaml" and args.dtype in f])
+            if len(list_of_yaml) > 1:
+                print("\nList of available configurations:\n")
+                [print(f"  {i} - {f}") for i, f in enumerate(sorted(list_of_yaml))]
+                try:
+                    a = int(input("\nEnter configuration file number ? "))
+                    file_name = sorted(list_of_yaml)[int(a)]
+                except:
+                    sys.exit(1)
+            elif len(list_of_yaml) == 1:
+                file_name = sorted(list_of_yaml)[0]
+            else:
+                raise RuntimeError(f"There are no YAML file in {network_dir}")
             yaml_file_path = os.path.join(
-                f"networks", model_family, model_name, args.framework, "network_" + args.dtype + ".yaml")
-            network_dir = os.path.dirname(yaml_file_path)
+                f"networks", model_family, model_name, args.framework, file_name)
+
         else:
             logger.error(f"Network required not found or not available, get {args.network}\n")
             # parser.print_help()
