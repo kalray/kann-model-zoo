@@ -49,6 +49,7 @@ def main(model_path, old, new):
     onnx.checker.check_model(new_onnx_model)
     print(f'Model with new input name {new} has been checked')
     new_model_path = model_path.replace(".onnx", "-new.onnx")
+    new_onnx_model.ir_version = 9
     onnx.save(new_onnx_model, new_model_path)
     print(f'Model with new input name {new} has been saved to {new_model_path}')
 
