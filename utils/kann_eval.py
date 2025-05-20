@@ -523,9 +523,10 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
     output_nodes = config["output_nodes_name"]
 
     # Load input and output preparators
-    inproc_module_name = f"{gen_dir}.{config['input_preparator'].replace('.py', '')}"
+    module_dir = os.path.relpath(gen_dir, WORKSPACE_PATH).replace("/", ".")
+    inproc_module_name = f"{module_dir}.{config['input_preparator'].replace('.py', '')}"
     prepare = importlib.import_module(inproc_module_name)
-    outproc_module_name = f"{gen_dir}.{config['output_preparator']}.output_preparator"
+    outproc_module_name = f"{module_dir}.{config['output_preparator']}.output_preparator"
     output_preparator = importlib.import_module(outproc_module_name)  # For output processing, later
 
     results = OrderedDict()  # Dict to be returned
@@ -642,7 +643,7 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
 
             # INFERENCE STAGE
             logger.info('Running inference on MPPA ...')
-            inference_log_file = f"eval_inference_{gen_dir}.log"
+            inference_log_file = f"eval_inference_{os.path.basename(gen_dir)}.log"
             serialized_param_file = [f for f in os.listdir(gen_dir) if f.split(".")[-1] == "kann"][0]
             serialized_param_file = os.path.join(gen_dir, serialized_param_file)
             flog = open(inference_log_file, "w+")
@@ -959,9 +960,9 @@ def main(opt):
         return NotImplementedError(f"Other metrics than mAP are not implemented yet, get {opt.metrics}")
     references = load_references(dataset_image_path)
 
-    # Stat evaluation
+    # Start evaluation
     t_start = time.perf_counter()
-    gen_dir = os.path.relpath(gen_dir, WORKSPACE_PATH)
+    gen_dir = os.path.realpath(gen_dir)
     results = run(gen_dir, dataset_image_path, device, debug=debug)
     if debug:
         print_results(results)

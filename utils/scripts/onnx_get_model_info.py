@@ -10,7 +10,7 @@
 import os
 import onnx
 import numpy
-import onnx_simplify
+import onnxsim
 import matplotlib.pyplot as plt
 import onnx_graphsurgeon as gs
 from screeninfo import get_monitors
@@ -257,7 +257,7 @@ def main(model_path, profile=False):
     onnx_model = onnx.load(model_path)
     onnx.checker.check_model(onnx_model)
 
-    opt_model, _ = onnx_simplify.simplify(onnx_model, check_n=2)  # to enable the shape inference ++
+    opt_model, _ = onnxsim.simplify(onnx_model, check_n=2)  # to enable the shape inference ++
     print(f"\nAnalyzing {model_path} ({os.path.getsize(model_path) / 1e6:.2f} MB)")
     pprint_short(opt_model)
 

@@ -58,12 +58,13 @@ def get_model_from(url, dest_model_path):
 
 def main(args, other_args):
      # List the neural networks available in the owner file system
-    # located at ./networks/ DIR path
-    models = {}
-    for d in sorted(os.listdir(r"networks")):
-        if os.path.isdir(os.path.join("networks", d)):
-            models[d] = [nn for nn in sorted(os.listdir(os.path.join("networks", d)))
-                            if os.path.isdir(os.path.join("networks", d, nn))]
+    # located at <repo>/networks/ DIR path
+    models = dict()
+    networks_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "networks"))
+    for d in sorted(os.listdir(networks_dir)):
+        if os.path.isdir(os.path.join(networks_dir, d)):
+            models[d] = [nn for nn in sorted(os.listdir(os.path.join(networks_dir, d)))
+                            if os.path.isdir(os.path.join(networks_dir, d, nn))]
     models_list = [v for nn in models.values() for v in nn]
 
     # Print the neural networks available
@@ -94,7 +95,7 @@ def main(args, other_args):
             model_family = model_family[0]
 
             # add an interaction with the user if multiple configurations are found
-            network_dir = os.path.join(f"networks", model_family, model_name, args.framework)
+            network_dir = os.path.join(networks_dir, model_family, model_name, args.framework)
             list_of_yaml = sorted([f for f in os.listdir(network_dir) if f.split('.')[-1] == "yaml" and args.dtype in f])
             if len(list_of_yaml) > 1:
                 print("\nList of available configurations:\n")
@@ -108,8 +109,7 @@ def main(args, other_args):
                 file_name = sorted(list_of_yaml)[0]
             else:
                 raise RuntimeError(f"There are no YAML file in {network_dir}")
-            yaml_file_path = os.path.join(
-                f"networks", model_family, model_name, args.framework, file_name)
+            yaml_file_path = os.path.join(network_dir, file_name)
 
         else:
             logger.error(f"Network required not found or not available, get {args.network}\n")

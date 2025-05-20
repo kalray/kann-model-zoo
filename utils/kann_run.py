@@ -168,7 +168,8 @@ def demo(all_options):
             ["tee", inference_log_path],
             stdin=infer_p.stdout,
         )
-        infer_p.wait()
+        if infer_p.wait() != 0:
+            raise RuntimeError("{} FAILED !".format(" ".join(cmd_args)))
         logger.info("Done")
     finally:
         if isinstance(infer_p, subprocess.Popen):
