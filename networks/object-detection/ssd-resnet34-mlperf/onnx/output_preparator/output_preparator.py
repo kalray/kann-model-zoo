@@ -60,7 +60,7 @@ def post_process(cfg, frame, nn_outputs, device='mppa', **kwargs):
         xyxy = [y_min, x_min, y_max, x_max]
         label = "{} {:0.4f}".format(class_j, score_j)
         if kwargs["dbg"]:
-            print(f"{head}  >> [Post-proc] prediction: {label} {[round(i, 3) for i in xyxy]}{reset}")
+            print(f"{head}  >> [Post-proc] prediction: {score_j} - {class_j} - {[round(i, 3) for i in xyxy]}{reset}")
         plot_box(xyxy, frame, label=label, color=colors[int(0)], line_thickness=2)
 
     return frame
