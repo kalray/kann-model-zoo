@@ -100,6 +100,7 @@ def post_process(cfg, frame, predictions, device='mppa', **kwargs):
     for output_name, prediction in predictions.items():
         if device == 'cpu':
             pred = prediction.astype(dtype=numpy.float32)[0]
+            pred = numpy.transpose(pred, (1, 2, 0))  # ONNX data format
         elif device == 'mppa':
             pred = prediction.astype(dtype=numpy.float32)
             pred = numpy.reshape(pred, cfg['output_nodes_shape'][0])
