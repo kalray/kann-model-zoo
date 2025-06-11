@@ -6,26 +6,17 @@
 # to specific written permission of Kalray SA.
 ###
 
-from functools import reduce
-from subprocess import Popen
-import collections
-import glob
-import importlib
 import os
 import re
-import shutil
+import cv2
 import sys
-import tempfile
-import threading
 import time
-import traceback
+import yaml
+import click
 import queue
 import numpy
-
-import click
-import cv2
-import numpy as np
-import yaml
+import threading
+import importlib
 
 
 def log(msg):
@@ -155,7 +146,7 @@ def run_demo(
         out_video=None,
         out_img_path : str = None,
         verbose=True
-    ):
+    )->int:
     """
     @param config         Content of <network>.yaml file.
     @param network_dir    Generated dir from KaNN
@@ -368,11 +359,17 @@ def main(
         # start the ONNX model
         import onnx
         import onnxruntime
-        onnx_path = os.path.join(os.path.dirname(network_config), config['onnx_model'])
+        # check if optimized model exist from generated model
+        onnx_path = os.path.abspath(
+            os.path.join(os.path.dirname(network_config), "optimized-model.onnx"))
+        # check if original model exist from config file
         if not os.path.isfile(onnx_path):
-            onnx_path = os.path.join(os.path.dirname(network_config), "optimized-model.onnx")
+            onnx_path = os.path.abspath(
+                os.path.join(os.path.dirname(network_config), config.get('onnx_model')))
+        # otherwise raise an error
         if not os.path.isfile(onnx_path):
             raise RuntimeError(f"{onnx_path} does not exists, please ensure that model file path exists")
+        log(f"Model used for inference: {onnx_path}")
         onnx_model = onnx.load(onnx_path)
         onnx.checker.check_model(onnx_model)
         sess = onnxruntime.InferenceSession(onnx_path)

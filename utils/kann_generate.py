@@ -12,52 +12,15 @@ import sys
 import yaml
 import shutil
 import argparse
-import requests
 import subprocess
 
-from tqdm import tqdm
 from kann_utils import logger, kHelpFormat, kHelp
 
-URL_HF_PATH = "https://huggingface.co/Kalray/"
-
-
-def get_model_from(url, dest_model_path):
-    model_dir = os.path.dirname(dest_model_path)
-    logger.info("Model requested directory: {}".format(model_dir))
-    logger.info("Model requested path:      {}".format(dest_model_path))
-
-    if not os.path.exists(dest_model_path):
-        logger.warning('Model does not exists, trying to download from 🤗')
-        model_name = model_dir.split("/")[-3]
-        model_filename = os.path.basename(dest_model_path)
-        model_url = os.path.join(
-            url, model_name, "resolve", "main", model_filename)
-        model_url += "?download=true"
-        os.makedirs(model_dir, exist_ok=True)
-        logger.info(f"request to {model_url}")
-        with requests.get(model_url, stream=True) as response:
-            if response.status_code == 200:
-                total_size = int(response.headers.get("content-length", 0))
-                block_size = 1024
-                with tqdm(total=total_size,
-                          unit="B", unit_scale=True,
-                          desc="Download file from 🤗 {}".format(URL_HF_PATH)) \
-                        as progress_bar:
-                    with open(dest_model_path, "wb+") as handle:
-                        for data in response.iter_content(block_size):
-                            progress_bar.update(len(data))
-                            handle.write(data)
-                status = progress_bar.n == total_size
-            else:
-                status = False
-        if not status:
-            logger.error('Model does not exists on our 🤗 platform ... 😢')
-            logger.error('Please contact us to support@kalrayinc.com or report the issue to https://github.com/kalray/kann-model-zoo/issues')
-            sys.exit(1)
+REPOSITORY_ABSPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 def main(args, other_args):
-     # List the neural networks available in the owner file system
+    # List the neural networks available in the owner file system
     # located at <repo>/networks/ DIR path
     models = dict()
     networks_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "networks"))
@@ -130,11 +93,10 @@ def main(args, other_args):
         print(f"Unknown framework, {framework} not supported !")
         sys.exit(1)
 
-    # Check if model exists locally
-    # Otherwise it download it from HuggingFace
-    if not os.path.isfile(model_path):
-        get_model_from(URL_HF_PATH, model_path)
-
+    # define cache dir to store models locally in case of huggingface hub use
+    if not os.environ.get("KANN_CACHE_DIR"):
+        os.environ["KANN_CACHE_DIR"] = os.path.join(REPOSITORY_ABSPATH, ".kann_cache")
+    logger.info(f"HF hub destination path is defined to : {os.environ['KANN_CACHE_DIR']}")
     # Finally generate the model with KaNN(tm)
     if args.debug:
         import kann
