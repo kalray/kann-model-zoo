@@ -1,6 +1,6 @@
 name: SSD-MobileNet-v1-MLPerf
 framework: onnx
-onnx_model: models/ssd_mobilenet_v1_12.onnx
+onnx_model: Kalray/ssd-mobilenet-v1-mlperf/ssd_mobilenet_v1_12.onnx
 onnx_graph_optim: true
 
 input_nodes_name:
