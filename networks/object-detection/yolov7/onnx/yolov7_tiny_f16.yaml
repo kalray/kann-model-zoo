@@ -1,28 +1,24 @@
-name: yolov8l
+name: YOLOv7-tiny
 framework: onnx
-onnx_model: models/yolov8l.optimized.onnx
+onnx_model: Kalray/yolov7/yolov7-tiny.onnx
 onnx_graph_optim: true
 
 input_nodes_name:
-    - "images"
+    - images
 input_nodes_shape:
     - [640, 1, 640, 3]
 input_nodes_dtype:
-    - "float32"
+    - float32
 
 output_nodes_name:
-    - "/model.22/Concat_output_0"
-    - "/model.22/Concat_1_output_0"
-    - "/model.22/Concat_2_output_0"
+    - output
 output_nodes_shape:
-    - [80, 1, 80, 144 ]
-    - [40, 1, 40, 144]
-    - [20, 1, 20, 144]
+    - [1, 25200, 85]
+output_nodes_dtype:
+    - float32
 
 generate_options:
-    quantize_fp32_to_fp16: true
-    data_buffer_size: 7560000
-    threshold_image_to_ddr: 50000000
+    threshold_image_to_ddr: 100000000
     threshold_max_params_size: 500000
     ddr_images_tiles_size: 65535
 
@@ -31,4 +27,3 @@ extra_data:
     input_preparators:
         - input_preparator.py
     output_preparator: output_preparator
-
