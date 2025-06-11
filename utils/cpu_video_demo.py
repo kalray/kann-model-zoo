@@ -258,7 +258,7 @@ def run_demo(
         cv2.destroyWindow(window_name)
         cv2.waitKey(1)  # pump all events, avoid bug in opencv where windows are not properly closed
     if out_img_path:
-        cv2.imwrite(out_img_path, prev_frame)
+        cv2.imwrite(out_img_path, frame)
         log(f"Last frame has been saved to: {out_img_path}")
     return frames_counter
 

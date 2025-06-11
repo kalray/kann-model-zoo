@@ -6,24 +6,23 @@
 # to specific written permission of Kalray SA.
 ###
 
-from functools import reduce
-from subprocess import Popen
-import collections
-import glob
-import importlib
 import os
-import shutil
+import cv2
 import sys
+import time
+import yaml
+import glob
+import click
+import queue
+import shutil
 import tempfile
 import threading
-import time
-import traceback
-import queue
-
-import click
-import cv2
+import importlib
+import collections
 import numpy as np
-import yaml
+
+from functools import reduce
+from subprocess import Popen
 
 
 def log(msg):
@@ -262,7 +261,7 @@ def run_demo(
 
     src_reader.start_decode()
 
-    while True: # infinite loop
+    while True:  # infinite loop
 
         # CATCH FRAME ############################
         t[0] = time.perf_counter()
@@ -338,7 +337,9 @@ def run_demo(
         cv2.destroyWindow(window_name)
         cv2.waitKey(1)  # pump all events, avoid bug in opencv where windows are not properly closed
     if out_img_path:
-        cv2.imwrite(out_img_path, prev_frame)
+        if frame is None:
+            frame = prev_frame
+        cv2.imwrite(out_img_path, frame)
         log(f"Last frame has been saved to: {out_img_path}")
     # close the FIFOs, to initiate the terminaison sequence in kann
     for i in kann_in.values():
