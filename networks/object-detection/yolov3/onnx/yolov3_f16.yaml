@@ -1,6 +1,6 @@
-name: YOLOv3-tiny
-onnx_model: models/yolov3-tiny.onnx
+name: YOLOv3
 framework: onnx
+onnx_model: Kalray/yolov3/yolov3.onnx
 onnx_graph_optim: true
 
 input_nodes_name:
@@ -8,16 +8,14 @@ input_nodes_name:
 input_nodes_shape:
     - [416, 1, 416, 3]
 output_nodes_name:
-    - Conv_output_0
-    - Conv_output_1
+    - predictions
 output_nodes_shape:
-    - [26, 1, 26, 255]
-    - [13, 1, 13, 255]
+    - [1, 10647, 85]
 
 generate_options:
-    quantize_fp32_to_fp16: true
+    threshold_image_to_ddr: 100000000
+    threshold_max_params_size: 500000
     ddr_images_tiles_size: 65535
-
 
 extra_data:
     classes: classes.txt

@@ -37,11 +37,11 @@ def prepare_img(mat, out_dtype=numpy.float32):
     boxed_image = letterbox_image(mat, tuple(reversed(model_image_size)))
     image_data = numpy.array(boxed_image, dtype='float32')
     image_data /= 255.
-    return image_data
+    return image_data.astype(out_dtype)
 
 
 def image_stream(filename):
-    """ 
+    """
     Read and prepare the sequence of images of <filename>.
     If <filename> is an int, use it as a webcam ID.
     Otherwise <filename> should be the name of an image, video
