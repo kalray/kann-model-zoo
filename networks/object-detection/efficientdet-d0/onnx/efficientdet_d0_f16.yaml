@@ -1,0 +1,44 @@
+name: efficientdet-d0
+framework: onnx
+onnx_model: Kalray/efficientdet-d0/efficientdet-d0-s.optimized.onnx
+onnx_graph_optim: true
+
+input_nodes_name:
+    - image:0
+input_nodes_shape:
+    - [512, 1, 512, 3]
+
+output_nodes_name:
+    - class_net/class-predict/BiasAdd:0
+    - class_net/class-predict_1/BiasAdd:0
+    - class_net/class-predict_2/BiasAdd:0
+    - class_net/class-predict_3/BiasAdd:0
+    - class_net/class-predict_4/BiasAdd:0
+    - box_net/box-predict/BiasAdd:0
+    - box_net/box-predict_1/BiasAdd:0
+    - box_net/box-predict_2/BiasAdd:0
+    - box_net/box-predict_3/BiasAdd:0
+    - box_net/box-predict_4/BiasAdd:0
+output_nodes_shape:
+    - [64, 1, 64, 810]
+    - [32, 1, 32, 810]
+    - [16, 1, 16, 810]
+    - [8, 1, 8, 810]
+    - [4, 1, 4, 810]
+    - [64, 1, 64, 36]
+    - [32, 1, 32, 36]
+    - [16, 1, 16, 36]
+    - [8, 1, 8, 36]
+    - [4, 1, 4, 36]
+
+generate_options:
+    threshold_image_to_ddr: 10000000
+    threshold_max_params_size: 500000
+    ddr_images_tiles_size: 65535
+
+extra_data:
+    classes: classes.txt
+    input_preparators:
+        - input_preparator.py
+    output_preparator: output_preparator
+

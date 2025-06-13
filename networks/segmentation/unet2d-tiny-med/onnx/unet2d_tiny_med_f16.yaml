@@ -1,0 +1,29 @@
+name: UNet-Tiny-2D-Medical-MRI-brain
+framework: onnx
+onnx_model: Kalray/unet2d-tiny-med/unet2d_mri_brain.onnx
+onnx_graph_optim: true
+
+input_nodes_name:
+    - "images"
+input_nodes_shape:
+    - [256, 1, 256, 3]
+input_nodes_dtype:
+    - "float32"
+
+output_nodes_name:
+    - "output"
+output_nodes_shape:
+    - [256, 1, 256, 1]
+output_nodes_dtype:
+    - "float32"
+
+generate_options:
+    threshold_image_to_ddr: 10000000
+    threshold_max_params_size: 500000
+    ddr_images_tiles_size: 65535
+
+extra_data:
+    classes: classes.txt
+    input_preparators:
+        - input_preparator.py
+    output_preparator: output_preparator
