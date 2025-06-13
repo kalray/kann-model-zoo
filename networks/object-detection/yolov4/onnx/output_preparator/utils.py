@@ -186,10 +186,11 @@ def process_detections(
     reset = "\x1b[0;0m"
 
     # Process detections
-    predictions = sess.run(None, preds)[0]
+    predictions = preds[cfg['output_nodes_name'][0]]
+
     # Apply non max suppression algorithm on predictions
     out = filter_bboxes(
-        predictions, # shape is (batch, xywh + nc, idx), e.g. (1, 84, 10647)
+        predictions, # shape is (batch, xywh + nc, idx), e.g. (1, 85, N)
         conf_thres,
         iou_thres,
         max_det=100,
@@ -215,10 +216,3 @@ def process_detections(
 
     # return annotated frame
     return frame, detect
-
-
-import os
-import onnxruntime as ort
-model_path = os.path.dirname(os.path.realpath(__file__))
-model_path = os.path.join(model_path, "yolov4.postprocessing.onnx")
-sess = ort.InferenceSession(model_path)

@@ -1,21 +1,16 @@
 name: YOLOv4
 framework: onnx
-onnx_model: Kalray/yolov4/yolov4.optimized.onnx
+onnx_model: Kalray/yolov4/yolov4.onnx
 onnx_graph_optim: true
 
 input_nodes_name:
     - images
 input_nodes_shape:
     - [640, 1, 640, 3]
-
 output_nodes_name:
-    - /module_list.160/Conv2d/Conv_output_0
-    - /module_list.149/Conv2d/Conv_output_0
-    - /module_list.138/Conv2d/Conv_output_0
+    - predictions
 output_nodes_shape:
-    - [20, 1, 20, 255]
-    - [40, 1, 40, 255]
-    - [80, 1, 80, 255]
+    - [1, 25200, 85]
 
 generate_options:
     data_buffer_size: 7560000
