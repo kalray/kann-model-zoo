@@ -1,0 +1,30 @@
+name: vit-base-path16-224
+framework: onnx
+onnx_model: Kalray/vit-base/vit_base_patch16_224.onnx
+
+onnx_graph_optim: true
+
+input_nodes_name:
+    - "x"
+input_nodes_shape:
+    - [224, 1, 224, 3]
+input_nodes_dtype:
+    - "float32"
+
+output_nodes_name:
+   - "1089"
+output_nodes_shape:
+   - [1, 1000]
+output_nodes_dtype:
+    - "float32"
+
+generate_options:
+    threshold_image_to_ddr: 20000000
+    threshold_max_params_size: 350000
+    ddr_images_tiles_size: 65535
+
+extra_data:
+    classes: classes.txt
+    input_preparators:
+        - input_preparator.py
+    output_preparator: output_preparator

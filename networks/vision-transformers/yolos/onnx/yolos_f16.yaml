@@ -1,0 +1,29 @@
+name: YOLOs
+framework: onnx
+onnx_model: Kalray/yolos/yolos-base.onnx
+onnx_graph_optim: true
+
+input_nodes_name:
+    - images
+input_nodes_shape:
+    - [800, 1, 1056, 3]
+input_nodes_dtype:
+    - "float32"
+
+output_nodes_name:
+    - "output_0"
+    - "1808"
+    - "onnx::Slice_1776"
+output_nodes_shape:
+    - [1, 100, 92]
+    - [1, 100, 4]
+    - [1, 3401, 768]
+output_nodes_dtype:
+    - "float32"
+    - "float32"
+    - "float32"
+
+generate_options:
+    threshold_image_to_ddr: 20000000
+    threshold_max_params_size: 350000
+    ddr_images_tiles_size: 65535

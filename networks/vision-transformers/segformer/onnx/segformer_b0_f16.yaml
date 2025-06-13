@@ -1,0 +1,23 @@
+name: Segformer-b0-ade
+framework: onnx
+onnx_model: Kalray/segformer/segformer-b0-ade-512-512.onnx
+onnx_graph_optim: True
+
+input_nodes_name:
+    - images
+input_nodes_shape:
+    - [512, 1, 512, 3]
+input_nodes_dtype:
+    - "float32"
+output_nodes_name:
+    - output
+output_nodes_shape:
+   - [16, 1, 16, 256]
+output_nodes_dtype:
+    - "float32"
+
+generate_options:
+    data_buffer_size: 7560000
+    threshold_image_to_ddr: 10000000
+    ddr_images_tiles_size: 65535
+    max_live_range: 10
