@@ -11,6 +11,7 @@ import os
 import sys
 import yaml
 import numpy
+import shutil
 import argparse
 import subprocess
 
@@ -31,8 +32,9 @@ class KannRunHelp(argparse.Action):
 def infer(all_options):
 
     options = all_options[0]
-    pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
-    os.environ["KANN_POCL_FILE"] = pocl_file
+    if args.pocl_file is None:
+        pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
+        os.environ["KANN_POCL_FILE"] = pocl_file
 
     # Generate inference log file path
     inference_log_path = f"inference_{os.path.basename(options.generated_dir)}.log"
@@ -251,28 +253,36 @@ if __name__ == "__main__":
             os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l2_d_1m.elf"
 
         if args.bin_file is None:
-            if os.environ.get('KALRAY_TOOLCHAIN_DIR', None) is not None:
+            bin_path = shutil.which('kann_opencl_cnn')
+            if bin_path is not None:
+                logger.info(f"Find {bin_path} as host application")
+                args.bin_file = bin_path
+            elif os.environ.get('KALRAY_TOOLCHAIN_DIR', None) is not None:
                 args.bin_file = os.path.join(os.environ.get('KALRAY_TOOLCHAIN_DIR'), "bin", "kann_opencl_cnn")
             else:
-                logger.warning("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
-                raise RuntimeError
+                raise RuntimeError("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
+
         if args.pocl_dir is None:
-            if os.environ.get('KALRAY_TOOLCHAIN_DIR', None) is not None:
+            pocl_file_path = os.environ.get('KANN_POCL_FILE')
+            if pocl_file_path is not None and os.path.isfile(pocl_file_path):
+                args.pocl_dir = os.path.dirname(pocl_file_path)
+                args.pocl_file = os.path.abspath(pocl_file_path)
+            elif os.environ.get('KALRAY_TOOLCHAIN_DIR') is not None:
                 toolchain_dir = os.environ.get('KALRAY_TOOLCHAIN_DIR')
                 args.pocl_dir = os.path.join(toolchain_dir, f"kvx-cos/lib/kv3-2/KAF/services/")
+                args.pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
             else:
-                logger.warning("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
-                raise RuntimeError
+                raise RuntimeError("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
         else:
             args.pocl_dir = os.path.abspath(args.pocl_dir)
-        pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
+            args.pocl_file = os.path.join(args.pocl_dir, "mppa_kann_opencl.cl.pocl")
 
         with open(os.path.join(args.generated_dir, "network.dump.yaml"), 'r') as yaml_file:
             cfg = yaml.load(yaml_file, Loader=yaml.Loader)
         generate_options = cfg.get('generate_options')
         if generate_options is not None:
             data_buffer_size = generate_options.get('data_buffer_size', 6240000)
-            if 7600000 > data_buffer_size > 6240000 and os.environ["POCL_MPPA_FIRMWARE_NAME"] != "ocl_fw_l1.elf":
+            if 7570000 >= data_buffer_size > 6240000 and os.environ["POCL_MPPA_FIRMWARE_NAME"] != "ocl_fw_l1.elf":
                 msg = f"\n" + "*" * 50
                 msg += f"\n! Data_buffer_size is set to {data_buffer_size:,} B "
                 msg += f"\n  which is not working with actual firmware"
@@ -282,9 +292,9 @@ if __name__ == "__main__":
                 msg += f"\n" + "*" * 50
                 logger.warning(msg)
                 os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l1.elf"
-            elif data_buffer_size > 7600000:
+            elif data_buffer_size > 7570000:
                 logger.warning(f"Data_buffer_size is set to {data_buffer_size} which")
                 logger.warning(f"is not optimal for Coolidge2 (SMEM:8MB / kvx-clusters)")
-        eval_env(args.bin_file, pocl_file, "kv3-2")
+        eval_env(args.bin_file, args.pocl_file, "kv3-2")
 
     args.func(opt)
