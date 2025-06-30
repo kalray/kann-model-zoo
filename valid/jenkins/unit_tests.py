@@ -1,8 +1,16 @@
+#! /usr/bin/env python3
+
+###
+# Copyright (C) 2025 Kalray SA. All rights reserved.
+# This code is Kalray proprietary and confidential.
+# Any use of the code for whatever purpose is subject
+# to specific written permission of Kalray SA.
+###
+
 import os
 import glob
 import shutil
 import argparse
-import threading
 
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -13,24 +21,16 @@ from unit_tests_report import check_inference
 from unit_tests_report import check_demo
 from unit_tests_report import get_perf_from_log
 from unit_tests_report import get_prediction_demo
+from unit_tests_report import report
 from mppa_utils import get_sw_kenv
 
 from test_utils import logger
 from test_utils import WORKSPACE_PATH
+from test_utils import SOURCES
 
 
-def write_csv_header(f):
-    f.write(f"TestID;Family;NN_name;Framework;CFG file;")
-    f.write(f"GENER;INFER;PERF_HOST;PERF_MPPA;")
-    f.write(f"DEMO_KVX;SCORE_KVX;PRED_KVX;")
-    f.write(f"DEMO_CPU;SCORE_CPU;PRED_CPU;")
-    f.write(f"\n")
-
-
-def run_tests(nn_types, build_dir, datatypes='f16', build=True, run=True):
-
-    networks_path = os.path.join(WORKSPACE_PATH, "networks")
-    write_mode = "w+"
+# run_tests(types, build_dir, model_to_include, dtypes)
+def run_tests(list_of_files, build_dir, build=True, run=True):
 
     if build and os.path.exists(build_dir):
         # shutil.rmtree(build_dir)
@@ -45,74 +45,72 @@ def run_tests(nn_types, build_dir, datatypes='f16', build=True, run=True):
 
     results = OrderedDict()
 
-    if nn_types == ["all"]:
-        nn_types = os.listdir(networks_path)
-    if not isinstance(datatypes, list):
-        datatypes = [datatypes]
+    print("\nList of tests to execute:")
+    [print(f"  - {i:03d}: {f}") for i, f in enumerate(list_of_files)]
+    print("--")
 
-    # Limit cpu usage using Semaphore and ThreadPoolExecutor
+    # Limit cpu usage using ThreadPoolExecutor
     CPU_COUNT = os.cpu_count()
     CPU_WORKER = max(CPU_COUNT // 2, 1)
     # --
 
-    for datatype in datatypes:
-        for nn_type in nn_types:
-            try:
-                fresults = open(f"{build_dir}/{nn_type}_{datatype}_report.csv", write_mode)
-                write_csv_header(fresults)
-                list_of_files = sorted(glob.iglob(
-                    f"{networks_path}/{nn_type}/*/*/*_{datatype}.yaml",
-                    recursive=True))
-                # Generate models
-                if build:
-                    with ThreadPoolExecutor(max_workers=CPU_WORKER) as executor:
-                        for idx, cfgFile in enumerate(list_of_files):
-                            # Generate test ID
-                            test_id = f"{nn_type[:5]}-{idx:04d}{datatype}"
-                            # Generate
-                            executor.submit(thread_generate, cfgFile, test_id, gen_dir)
-                # Then check and run
-                if run:
-                    for idx, cfgFile in enumerate(list_of_files):
-                        if nn_type in cfgFile:
-                            # Generate test ID
-                            test_id = f"{nn_type[:5]}-{idx:04d}{datatype}"
-                            # Check generation from build dir
-                            gen_path = check_generate(cfgFile, test_id, gen_dir, results, fresults)
-                            # Check that generated model runs properly
-                            infer_path = check_inference(gen_path, test_id, logs_dir, results, fresults)
-                            # Get perf from inference log
-                            perf = get_perf_from_log(infer_path)
-                            fresults.write(f"{perf['host']:.1f};{perf['mppa']:.1f};")
-                            logger.info(f"host: {perf['host']:6.1f} FPS\tmppa: {perf['mppa']:6.1f} FPS")
-                            # Get predictions from MPPA inference
-                            log_path = check_demo(gen_path, test_id, images_dir, results, fresults, "mppa")
-                            score_kvx, pred_kvx = get_prediction_demo(log_path)
-                            logger.info(f"mppa_score:{score_kvx:4.3f}\tmppa_pred: {pred_kvx}")
-                            fresults.write(f"{score_kvx:.3f};{pred_kvx};")
-                            # Get predictions from CPU inference
-                            log_path = check_demo(gen_path, test_id, images_dir, results, fresults, "cpu")
-                            score_cpu, pred_cpu = get_prediction_demo(log_path)
-                            logger.info(f"cpu_score: {score_cpu:4.3f}\tcpu_pred:  {pred_cpu}")
-                            fresults.write(f"{score_cpu:4.3f};{pred_cpu};\n")
-            finally:
-                fresults.close()
+    try:
+        # Generate models
+        if build:
+            with ThreadPoolExecutor(max_workers=CPU_WORKER) as executor:
+                for idx, cfgFile in enumerate(list_of_files):
+                    # Generate test ID
+                    nn = cfgFile.split("/")[-4]
+                    dtype = cfgFile.split("_")[-1].replace(".yaml", "")
+                    test_id = f"{nn[:5]}-{idx:04d}{dtype}"
+                    # Generate
+                    executor.submit(thread_generate, cfgFile, test_id, gen_dir, sep="+")
+
+        # copy gen logs to logs DIR
+        os.system(f"cp {gen_dir}/*/*.log {logs_dir}")
+
+        # Then check and run
+        if run:
+            for idx, cfgFile in enumerate(list_of_files):
+                # Generate test ID
+                nn = cfgFile.split("/")[-4]
+                dtype = cfgFile.split("_")[-1].replace(".yaml", "")
+                test_id = f"{nn[:5]}-{idx:04d}{dtype}"
+                # Check generation from build dir
+                gen_path = check_generate(cfgFile, test_id, gen_dir, results, sep="+")
+                # Check that generated model runs properly
+                infer_path = check_inference(gen_path, test_id, logs_dir, results)
+                # Get perf from inference log
+                perf = get_perf_from_log(infer_path)
+                logger.info(f"host: {perf['host']:6.1f} FPS\tmppa: {perf['mppa']:6.1f} FPS ({perf['cycles']:,} cycles)")
+
+                # Get predictions from MPPA inference
+                src_files = SOURCES[nn[:5]]
+                for src in src_files:
+                    log_path = check_demo(gen_path, src, test_id, images_dir, results, device="mppa")
+                    pred_kvx = get_prediction_demo(log_path)
+                    score, pred, bbox = pred_kvx[0]
+                    logger.info(f"mppa_score:{score:4.3f}\tmppa_pred: {pred} - {bbox}")
+                    # Get predictions from CPU inference
+                    log_path = check_demo(gen_path, src, test_id, images_dir, results, device="cpu")
+                    pred_cpu = get_prediction_demo(log_path)
+                    score, pred, bbox = pred_cpu[0]
+                    logger.info(f"mppa_score:{score:4.3f}\tmppa_pred: {pred} - {bbox}")
+
+    finally:
+        report(logs_dir, f'{logs_dir}/report', perffile=False)
 
 
 def main(opt):
-
     wpath = os.path.join(WORKSPACE_PATH)
+    net_path = os.path.join(wpath, "networks")
     if args.build_dir is None:
         kvx_ver, knn_ver = get_sw_kenv()
         build_dir = os.path.join(wpath, "valid", "jenkins", f"single_tests_kvx_{kvx_ver[0:12]}_knn_{knn_ver}")
     else:
         build_dir = os.path.realpath(args.build_dir)
-
-    categories = opt.type.split(",")
-    dtype = opt.datatype.split(",")
     _build = opt.build_only or not opt.run_only
     _run = not opt.build_only
-
     if args.clean:
         list_to_rem = sorted(glob.iglob(f"{build_dir}", recursive=True))
         for f in list_to_rem:
@@ -120,23 +118,62 @@ def main(opt):
                 shutil.rmtree(f, ignore_errors=True)
             else:
                 os.remove(f)
-        exit(0)
+        return
+    types = os.listdir(f"{net_path}") if opt.category == "all" \
+        else [opt.category]
+    dtypes = opt.datatype
+    models_to_include = opt.include
+    models_to_exclude = opt.exclude
 
-    run_tests(categories, build_dir, dtype, _build, _run)
+    models_to_run = []
+    networks_path = os.path.join(WORKSPACE_PATH, "networks")
+
+    # Define all models available in current NETWORK directory
+    all_available_models = list()
+    for nn in types:
+        all_available_models += list(sorted(glob.iglob(f"{networks_path}/{nn}/*/*/*.yaml", recursive=True)))
+
+    # Get the INCLUDED only
+    if len(models_to_include) > 0:
+        models_to_run = [
+            m for m in all_available_models
+                if m.split(os.path.sep)[-3] in models_to_include
+        ]
+    else:
+        models_to_run = all_available_models
+
+    # Remove the EXCLUDED models
+    models_to_run = [m for m in models_to_run if m.split(os.path.sep)[-3] not in models_to_exclude]
+
+    # Keep the DATAYPES only
+    if not isinstance(dtypes, list):
+        dtypes = [dtypes]
+    for dtype in dtypes:
+        models_to_run = [m for m in models_to_run if dtype in os.path.basename(m)]
+
+    run_tests(models_to_run, build_dir, _build, _run)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="single tests")
+    parser = argparse.ArgumentParser(prog="single-tests")
     parser.add_argument(
-        "--type", type=str,
+        "--category", "-c", type=str,
         default="all",
         help='Type of Neural networks to test ("all", "classifiers", "object-detection", or "segmentation")')
     parser.add_argument(
-        "--datatype", type=str,
-        default="f16",
-        help="Specify the computation inference datatype")
+        "--datatype", "-d", type=str, nargs='+',
+        default=["f16"],
+        help="Specify the computation inference datatype (f16 or i8)")
     parser.add_argument(
-        "--build-dir", type=str,
+        "--include", "-i", type=str, nargs='+',
+        default=list(),
+        help="Specify the model you want to include to test, if 'None' all YAML in the repository will be generated")
+    parser.add_argument(
+        "--exclude", "-e", type=str, nargs='+',
+        default=list(),
+        help="Exclude networks to test. e.g. --exclude alexnet rcnn")
+    parser.add_argument(
+        "--build-dir", "-b", type=str,
         default=None,
         help="Specify the path to workspace path directory")
     parser.add_argument(
