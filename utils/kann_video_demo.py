@@ -185,6 +185,7 @@ def run_demo(
         display : bool = True,
         out_video : bool = False,
         out_img_path : str = None,
+        nb_frames : int = -1,
         verbose : bool = False
     ):
     """
@@ -199,6 +200,7 @@ def run_demo(
     @param display        Enable graphical display of processed frames.
     @param out_video      Write into an output file the video stream
     @param out_img_path   Write into an output file the last frame processed
+    @param nb_frames      Number of frame to process
 
     @return               The number of frames processed.
     """
@@ -332,6 +334,11 @@ def run_demo(
         # END #####################################
         if out_video is not None:
             out_video.write(frame)
+        # looping or not
+        if nb_frames < 0:
+            continue
+        elif frames_counter >= nb_frames:
+            break
         # end of while loop
     if display:
         cv2.destroyWindow(window_name)
@@ -402,6 +409,11 @@ def run_demo(
     type=int,
     default=1,
     help="Set the batch size, default batching is 1.")
+@click.option(
+    '--nb-frames', '-n',
+    type=int,
+    default=-1,
+    help="Run inference on N frames only")
 def main(generated_dir,
          source,
          binaries_dir,
@@ -412,6 +424,7 @@ def main(generated_dir,
          save_video,
          save_img,
          batching,
+         nb_frames,
          verbose):
     """ Kalray Neural Network demonstrator.
 
@@ -468,7 +481,7 @@ def main(generated_dir,
     if source.isdigit():
         source = int(source)
     try:
-        src_reader = SourceReader(source, not no_replay)
+        src_reader = SourceReader(source, not no_replay or nb_frames > 0)
     except Exception as e:
         log("ERROR: {}".format(e))
         sys.exit(1)
@@ -569,10 +582,8 @@ def main(generated_dir,
             not no_display,
             out_video,
             out_img_path,
+            nb_frames,
             verbose)
-
-    except Exception as e:
-        log("ERROR:\n" + traceback.format_exc())
 
     finally:
         # make sure we kill kann no matter what happens

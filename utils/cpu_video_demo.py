@@ -20,7 +20,7 @@ import importlib
 
 
 def log(msg):
-    print("[KaNN Demo] " + msg)
+    print("[CPU Demo] " + msg)
 
 
 class SourceReader:
@@ -145,6 +145,7 @@ def run_demo(
         display : bool = True,
         out_video=None,
         out_img_path : str = None,
+        nb_frames : int = -1,
         verbose=True
     )->int:
     """
@@ -156,6 +157,7 @@ def run_demo(
     @param display        Enable graphical display of processed frames.
     @param out_video      Write into an output file the video stream
     @param out_img_path   Write into an output file the last frame processed
+    @param nb_frames      Number of frame to process
 
     @return               The number of frames processed.
     """
@@ -253,6 +255,11 @@ def run_demo(
         # END ####################################
         if out_video is not None:
             out_video.write(frame)
+        # looping or not
+        if nb_frames < 0:
+            continue
+        elif frames_counter >= nb_frames:
+            break
         # end of while loop
     if display:
         cv2.destroyWindow(window_name)
@@ -292,6 +299,11 @@ def run_demo(
     '--save-img',
     is_flag=True,
     help="Save last frame with output predictions as video file.")
+@click.option(
+    '--nb-frames', '-n',
+    type=int,
+    default=-1,
+    help="Run inference on N frames only")
 def main(
         network_config,
         source,
@@ -299,6 +311,7 @@ def main(
         no_display,
         no_replay,
         save_video,
+        nb_frames,
         save_img):
 
     """ ONNX demonstrator.
@@ -381,7 +394,7 @@ def main(
         if window_info is None:
             no_display = True
         # run demo
-        nbr_frames = run_demo(
+        run_demo(
             config,
             network_dir,
             src_reader,
@@ -389,10 +402,8 @@ def main(
             not no_display,
             out_video,
             out_img_path,
+            nb_frames,
             verbose)
-
-    except Exception as e:
-        log("ERROR:\n" + traceback.format_exc())
     finally:
         # make video file unexpectedly closed
         if save_video:
