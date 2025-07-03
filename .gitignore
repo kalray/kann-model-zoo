@@ -1,3 +1,4 @@
+# directories
 __pycache__/
 .archives/
 .code/
@@ -7,13 +8,21 @@ __pycache__/
 .local/
 .tmp*/
 .vscode/
-.kvx-mppa.version
-tmp*/
+.pocl_cache_dir/
+build/
+datasets/
+devimage*/
 generated*/
+inputs_outputs*/
 models/
 output/
+tmp*/
+# extensions
+*.bin
+*.deb
+*.kann
+*.log
+*.pt
 *.pyc
 *.pyx
 *.swp
-*.bin
-*.kann

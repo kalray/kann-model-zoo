@@ -1,12 +1,13 @@
+<p align="center"><img width="25%" src="./utils/materials/kalray_logo.png"></a></br></p>
+
 # KaNN™ Model Zoo
 
-<img width="25%" src="./utils/materials/kalray_logo.png"></a></br>
-
-![ACE-6.0.0](https://img.shields.io/badge/MMPA--Coolidge2-ACE--6.0.0-g)
-![KaNN-5.5.0](https://img.shields.io/badge/KaNN--5.5.0-red)
+![ACE-6.1.0](https://img.shields.io/badge/MMPA--Coolidge2-ACE--6.1.0-g)
+![KaNN-5.6.0](https://img.shields.io/badge/KaNN--5.6.0-red)
 ![Classification](https://img.shields.io/badge/Classification-27-blue)
-![Object-Detection](https://img.shields.io/badge/Object--detection-32-blue)
+![Object-Detection](https://img.shields.io/badge/Object--detection-41-blue)
 ![Segmentation](https://img.shields.io/badge/Segmentation-9-blue)
+![VisionTransformers](https://img.shields.io/badge/VisionTransformers-4-blue)
 ![A](https://img.shields.io/badge/HuggingFace%20🤗-orange)</br>
 
 The KaNN™ Model Zoo repository offers a collection of neural network models **ready to compile & run** on Kalray's MPPA®
@@ -20,20 +21,39 @@ KaNN™ Model Zoo complements the KaNN™ SDK, which streamlines model generatio
   </a></br>
 </p>
 
+## Quick start
+
+Example of use, once SW has been configured (described [here](./WIKI.md#prerequisites-sw-environment--configuration)):
+```bash
+# Generate model representation and run inference on MPPA
+kann run --from-yaml ./networks/object-detection/yolov8/onnx/yolov8n_f16.yaml
+# ... observe the output to consider the global and detailed performance
+
+# Run model representation into a video pipeline
+./run demo generated_kv3_2_YOLOv8n_onnx_5c_fp16 ./utils/sources/cat.jpg
+
+# Evaluate a model for object-detection on dataset COCO128
+./evaluate generated_kv3_2_YOLOv8n_onnx_5c_fp16 --metrics=mAP --dataset=coco128
+# .. wait for statistics
+```
+
 ## Contents
 
-CNN models are grouped by three types of machine vision applications:
+Neural Networks are grouped in this repository by applications and/or types:
 * [Classification](./networks/classifiers/README.md): DenseNet, EfficientNet, Inception, MobileNet, NasNet, ResNet, RegNet, SqueezeNet, VGG
 * [Object Detection](./networks/object-detection/README.md): EfficientDet, RetinatNet, SSD, YOLO
 * [Segmentation](./networks/segmentation/README.md): DeeplabV3+, Fully Convolution Network (FCN), U-Net, YOLO
+* [Vision-transformers](./networks/vision-transformers/README.md): Vit-base, MobileVit, SegFormer
+
+To quickly deploy a neural network on the MPPA®, a WIKI note is [available](WIKI.md).
 
 The examples below illustrate the kind of predictions obtained for each application type:
 
-| Classification <p> (e.g. SqueezeNet)                                      | Object Detection <p> (e.g. YOLOv8n)                                        | Segmentation <p> (e.g. Deeplabv3+)                                       |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| <img height="240" width="100%" src="./utils/materials/cat_class.jpg"></a> | <img height="240" width="100%" src="./utils/materials/cat_detect.jpg"></a> | <img height="240" width="100%" src="./utils/materials/cat_segm.jpg"></a> |
+| Classification <p> (e.g. SqueezeNet)                                     | Object Detection <p> (e.g. YOLO11s)                                       | Segmentation <p> (e.g. Deeplabv3+)                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| <img height="240" width="240" src="./utils/materials/cat_class.jpg"></a> | <img height="240" width="240" src="./utils/materials/cat_detect.jpg"></a> | <img height="240" width="240" src="./utils/materials/cat_segm.jpg"></a> |
 
-**images have been generated from this repository and KaNN™ SDK solution (ACE 5.4.0)*
+**images have been generated from this repository and KaNN™ SDK solution (ACE 6.1.0)*
 
 ## Kalray Neural Network (KaNN™) SDK
 
@@ -44,35 +64,38 @@ It is composed by:
   network. Thanks to the runtime, it gives you then the opportunity to run the algorithm directly on the MPPA®
 * **KaNN™ runtime** : Optimized libraries (in ASM/C/C++) to execute each operation node.
 
-ACE™ 6.0.0 | KaNN™ 5.5.0 supports: ONNX framework.
+> [!IMPORTANT] 
+> ACE™ 6.1.0 | KaNN™ 5.6.0 supports: ONNX framework only.
 
 ## Important
 
 * Neural networks are available on our **Hugging face plateform** 🤗 [HERE](https://huggingface.co/Kalray).
   Do not hesitate to check model card for details of implementation, sources or license.
 
-* TensorFlow and TensorFlowLite is now deprecated from this ACE™ version (>=6.0.0). All TF networks of the KaNN™
+* TensorFlow and TensorFlowLite is nolonger suppoerted from ACE™ version >=6.0.0. All TF networks of the KaNN™
   Model Zoo have been converted to ONNX format with [**tf2onnx**](https://github.com/onnx/tensorflow-onnx) tools.
 
 * To generate a neural network compatible for Kalray processor (MPPA®):
-  + in FP16, please refer to onnx model (pointed by network_f16.yaml configuration file)
-  + in INT8/FP16, use QDQ-model (pointed by the network_i8.yaml configuration file)
+  + in FP16, please refer to onnx model (pointed by `<model>_f16.yaml` configuration file)
+  + in INT8/FP16, use QDQ-model (pointed by the `<model>_i8.yaml` configuration file)
 
-* Interesting to run faster ? please contact our support to optimize your use case at support@kalrayinc.com
+> [!TIP]
+> Interested to run faster ? please contact our support to optimize your use case at support@kalrayinc.com
 
-## WIKI notes
+## WIKI
 
-To quickly deploy a neural network on the MPPA®, a WIKI note is available [here](WIKI.md):
+To quickly deploy a neural network on the MPPA®, a WIKI note is [available](WIKI.md):
 
-- [KaNN™ framework description](#kann-framework-description)
-- [Prerequisites: SW environment \& configuration](#prerequisites-sw-environment--configuration)
-- [How models are packaged](#how-models-are-packaged)
-- [Generate a model to run on the MPPA®](#generate-a-model-to-run-on-the-mppa)
-- [Evaluate the neural network inference on the MPPA®](#evaluate-the-neural-network-inference-on-the-mppa)
-- [Run the neural network as a demo](#run-the-neural-network-as-a-demo)
-- [Neural networks accuracy and associated metrics](#neural-networks-accuracy-and-associated-metrics)
-- [Custom Layers for extended neural network supoort](#custom-layers-for-extended-neural-network-supoort)
-- [Jupyter Notebooks](#jupyter-notebooks)
+  - [KaNN™ framework description](./WIKI.md#kann-framework-description)
+  - [Prerequisites: SW environment \& configuration](./WIKI.md#prerequisites-sw-environment--configuration)
+  - [How models are packaged](./WIKI.md#how-models-are-packaged)
+  - [Generate a model to run on the MPPA®](./WIKI.md#generate-a-model-to-run-on-the-mppa)
+  - [Evaluate the neural network inference on the MPPA®](./WIKI.md#evaluate-the-neural-network-inference-on-the-mppa)
+  - [Run the neural network in a video pipeline](./WIKI.md#run-the-neural-network-in-a-video-pipeline)
+  - [Neural networks accuracy and associated metrics](./WIKI.md#neural-networks-accuracy-and-associated-metrics)
+  - [Custom Layers for extended neural network support](./WIKI.md#custom-layers-for-extended-neural-network-support)
+  - [Jupyter Notebooks](./WIKI.md#jupyter-notebooks)
+  - [Automated tests, benchmark](./WIKI.md#automated-tests-benchmark)
 
 ## Requirements
 
@@ -81,8 +104,8 @@ To quickly deploy a neural network on the MPPA®, a WIKI note is available [here
 #### Host machine:
 
 * x86_64 CPU
-* DDR RAM > 8 GB
-* HDD disk > 32 GB
+* DDR RAM >= 8 GB
+* HDD disk >= 32 GB
 * PCIe >= Gen3, Gen4 x16 recommended
 
 #### Acceleration cards:
@@ -91,17 +114,17 @@ MPPA Coolidge2 product brief is available [here](https://www.kalrayinc.com/wp-co
 
 | KALRAY Products                                           | links                                                                     | TFLOPs (FP16) | TOPs (INT8) |
 | :-------------------------------------------------------- | :------------------------------------------------------------------------ | :-----------: | :---------: |
-| ![A](https://img.shields.io/badge/Coolidge2-Turbocard4-g) | [TC4](https://www.kalrayinc.com/products/kalray-processors/#turbocard4)   |      100      |     200     |
-| ![A](https://img.shields.io/badge/Coolidge2-K300-blue)    | [K300](https://www.kalrayinc.com/products/kalray-processors/#k300-family) |      25       |     50      |
+| ![A](https://img.shields.io/badge/Coolidge2-Turbocard4-g) | [TC4](https://www.kalrayinc.com/products/kalray-processors/#turbocard4)   |      80       |     160     |
+| ![A](https://img.shields.io/badge/Coolidge2-K300-blue)    | [K300](https://www.kalrayinc.com/products/kalray-processors/#k300-family) |      20       |     40      |
 
-**data are provided for MPPA frequency @ 1.2GHz (scalable)*
+**data are provided for MPPA frequency @ 1.0GHz (scalable)*
 ***compute capabilities (FLOPs/OPs) are given for dense tensors*
 
 ### Software requirements
 
 * ![U22](https://img.shields.io/badge/Ubuntu-22.04%20LTS-orange)
-  ![Ker](https://img.shields.io/badge/Linux%20Kernel-5.15.0-red)
-* ![ACE](https://img.shields.io/badge/Coolidge2-ACE--6.0.0-g)
-  ![KaNN-5.5.0](https://img.shields.io/badge/KaNN--5.5.0-red)
+  ![Kernel](https://img.shields.io/badge/Linux%20Kernel-5.15.0-red)
+* ![ACE](https://img.shields.io/badge/Coolidge2-ACE--6.1.0-g)
+  ![KaNN-5.6.0](https://img.shields.io/badge/KaNN--5.6.0-red)
 * ![Python](https://img.shields.io/badge/Python-3.10-blue)
   ![Python](https://img.shields.io/badge/Python-3.11-blue)

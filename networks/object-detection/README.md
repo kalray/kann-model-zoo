@@ -4,15 +4,15 @@
 
 This repository gives access to following object dectection neural networks main architecture:
 
-* EfficientDet, RetinatNet, SSD, YOLO
+* EfficientDet, RetinatNet, Single Shot Detector (SSD), YOLO
 
-Please find below, the neural networks listed according to their mAP50-95 accuracy vs
-Device performance in FPS at BATCH=1 / MPPA (ACE 6.0.0):
+Please find below, the neural networks listed according to their mAP50-95 accuracy vs MPPA performance in 
+FPS on TurboCard4 (TC4) with ACE 6.1.0:
 
 <p align="center">
-  <img width="100%" src="../../utils/materials/graph_obj_det_acc_perf_6.0.png"></a>
-  <i><b>Fig2.</b> Neural network accuracy (mAP50/95) [%] vs Device performance [FPS]at batch 1 / MPPA;</br>
-    bubble size is relative to PARAMs model size; blue: FP16 models</i>
+  <img width="75%" src="../../utils/materials/graph_obj_det_acc_perf_tc4_ace6.1.png"></a></br>
+  <i>Fig1. Neural network accuracy (mAP50/95) [%] vs Device performance on TurboCard4 [FPS];</br>
+    bubble size is relative to PARAMs model size; blue: FP16 models; magenta: INT8 quantized models</i>
 </p>
 Do not hesitate to see in detail the complete table below for all neural networks.
 
@@ -27,15 +27,16 @@ Do not hesitate to see in detail the complete table below for all neural network
   + in FP16, refer to ONNX model (pointed by network_f16.yaml)
   + Please see [WIKI.md](../../WIKI.md) for instructions on how to use any of these models
 
-  Example of use:
-  ```bash
-  # Generate
-  kann generate ./networks/object-detection/yolov8n/onnx/network_f16.yaml -d yolov8n
-  # wait ...
-  # then, run
-  kann run yolov8n
-  # observe the output to consider the global and detailed performance
-  ```
+ > [!TIP]
+ > Example of use:
+>  ```bash
+>  # Generate
+>  kann generate ./networks/object-detection/yolov8/onnx/yolov8n_f16.yaml -d yolov8n
+>  # wait ...
+>  # then, run
+>  kann run yolov8n
+>  # observe the output to consider the global and detailed performance
+>  ```
 
 ## Neural Networks
 
@@ -44,7 +45,7 @@ The models are listed below, according:
   + Performance is given at **batch 1** per MPPA in :
     * Frame per second from device point of view
 
-See more about our products here: [Coolidge2, K300, TC4](../../README.md#acceleration-cards)
+*NB: MPPA Coolidge V2 processor default frequency is 1.0 GHz in ACE 6.1.0*
 
 <!-- START AUTOMATED TABLE -->
 | NAME                                                                                         |   FLOPs |  Params | mAP-50 | mAP-50/95 | Dtype |   Input   | 🤗 HF repo-id                                                                                  | FPS(K300) | FPS(TC4) |
@@ -91,4 +92,30 @@ See more about our products here: [Coolidge2, K300, TC4](../../README.md#acceler
 | [YOLOv11l](./yolo11/onnx/yolo11l_f16.yaml)                                                   |  94.1 G |  25.2 M | 69.0 % |  53.7 %*  | FP16  |  640x640  | [YOLOv11l](https://huggingface.co/Kalray/yolo11)                                              |      66.9 |    267.7 |
 | [YOLOv11x](./yolo11/onnx/yolo11x_f16.yaml)                                                   | 205.6 G |  56.8 M | 70.8 % |  55.3 %*  | FP16  |  640x640  | [YOLOv11x](https://huggingface.co/Kalray/yolo11)                                              |      29.5 |    118.1 |
 <!-- END AUTOMATED TABLE -->
-*NB: MPPA Coolidge V2 processor default frequency is 1.0 GHz in ACE 6.0.0*
+
+(*) evaluated directly with MPPA using the commands:
+```bash
+# generate a model for MPPA inference
+kann generate model/to/path/my_model_dtype.yaml -d myModel
+
+# wait for generation, then execute internal 'evaluate' script
+./evaluate myModel -m mAP --dataset=coco
+
+# wait execution for report of STATISTICS
+INFO: Processing images in [4] steps of nb-images : 1250
+INFO: STEP 1 / 4
+Preparing images for inference : 100%|████████████████| 1250/1250 [00:22<00:00, 54.98it/s]
+INFO: Running inference on MPPA ...
+Post-processing predictions 1/4: 100%|████████████████| 1250/1250 [00:15<00:00, 82.42it/s]
+...
+INFO: STATISTICS:
+INFO:   Pre-processing on CPU  : 22.379 sec - (17.903 ms / img)
+INFO:   Processing on MPPA :     12.547 sec - (10.038 ms / query)
+INFO:   Post-processing on CPU : 26.653 sec - (21.323 ms / img)
+INFO: 
+INFO:                  Class     Images  Instances       Prec     Recall   F1-score      mAP50   mAP50-95
+INFO:                    all       5000      36335      0.666      0.498      0.556      0.547       0.39
+INFO: 
+INFO: For details, please use --all (or -a) to print mAP for all classes
+```
+Reported results are "mAP50" and "mAP50-95". In this example, "YOLOv5su-ReLU", mAP50=54.7% and mAP50-95=39.0%
