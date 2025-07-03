@@ -51,8 +51,6 @@ def thread_generate(cfg, num, odir, sep="."):
             logger.error(f"GEN {nn_name} - #ID {num} : > {FAIL} FAIL ({t_gen_sec:.2f} sec) "
                   f">> \n***\n{log_fail_text}***\n")
 
-    if os.environ.get("KANN_CACHE_DIR") is None:
-       os.environ["KANN_CACHE_DIR"] = os.path.join(WORKSPACE_PATH, ".kann_cache")
     nn_type, nn_name, nn_fwk = cfg.split(os.sep)[-4:-1]
     yaml_file = os.path.basename(cfg).replace(".yaml", "")
     generated_path = os.path.join(odir, nn_type, f"{num}{sep}{nn_name}{sep}{nn_fwk}{sep}{yaml_file}")

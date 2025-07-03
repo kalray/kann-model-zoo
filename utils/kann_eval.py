@@ -621,6 +621,8 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
             # INPUT PROCESSING STAGE
             shutil.rmtree(".tmp_io", ignore_errors=True)  # Remove just in case, from previous interrupted execution
             os.makedirs(".tmp_io", exist_ok=True)
+            if "/" in config['input_nodes_name'][0]:
+                os.makedirs(os.path.join(".tmp_io", os.path.dirname(config['input_nodes_name'][0])), exist_ok=True)
             shapes_by_img = OrderedDict()
 
             progress_bar_pre = tqdm(

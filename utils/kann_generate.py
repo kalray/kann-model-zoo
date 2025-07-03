@@ -10,7 +10,6 @@
 import os
 import sys
 import yaml
-import shutil
 import argparse
 import subprocess
 
@@ -23,7 +22,7 @@ def main(args, other_args):
     # List the neural networks available in the owner file system
     # located at <repo>/networks/ DIR path
     models = dict()
-    networks_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "networks"))
+    networks_dir = os.path.realpath(os.path.join(REPOSITORY_ABSPATH, "networks"))
     for d in sorted(os.listdir(networks_dir)):
         if os.path.isdir(os.path.join(networks_dir, d)):
             models[d] = [nn for nn in sorted(os.listdir(os.path.join(networks_dir, d)))
@@ -132,10 +131,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--list", "-l", action="store_true",
         help="List all networks available"
-    )
-    parser.add_argument(
-        "--use-nfs", action="store_true",
-        help="use interal url path, located on nfs (ACI and/or internal use only)"
     )
     parser.add_argument(
         "--debug", action="store_true",
