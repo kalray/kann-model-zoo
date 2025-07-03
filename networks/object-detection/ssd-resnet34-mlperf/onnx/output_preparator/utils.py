@@ -71,25 +71,27 @@ def process_detections(
     preds = dict(zip(postproc_outputs, outs))
 
     # Rescale boxes from img_size to im0 size
+    detect = []
     boxes = numpy.array(preds["bboxes"][0])
     for j in range(int(len(preds["labels"][0]))):
         score_j = numpy.float32(preds["scores"][0, j])
         if score_j < conf_thres:
              continue
         # draw the roi
-        class_num = int(preds["labels"][0, j]) - 1
-        class_j = classes[class_num]
+        class_j = int(preds["labels"][0, j]) - 1
+        cls_name = classes[class_j]
         box_j = boxes[j]
         y_min = float(box_j[0] * frame.shape[1])
         y_max = float(box_j[2] * frame.shape[1])
         x_min = float(box_j[1] * frame.shape[0])
         x_max = float(box_j[3] * frame.shape[0])
         xyxy = [y_min, x_min, y_max, x_max]
-        label = "{} {:0.4f}".format(class_j, score_j)
+        detect.append((xyxy, score_j, cls_name))
+        label = "{} {:0.4f}".format(cls_name, score_j)
         if dbg:
-            print(f"{head}  >> [Post-proc] prediction: {score_j} - {class_j} - {[round(i, 3) for i in xyxy]}{reset}")
-        plot_box(xyxy, frame, label=label, color=palette[class_j], line_thickness=2)
-    return frame
+            print(f"{head}  >> [Post-proc] prediction: {score_j} - {cls_name} - {[round(i, 3) for i in xyxy]}{reset}")
+        plot_box(xyxy, frame, label=label, color=palette[cls_name], line_thickness=2)
+    return frame, detect
 
 
 import onnxruntime as ort

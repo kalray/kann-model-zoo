@@ -70,6 +70,7 @@ def process_detections(
     outs = sess.run(None, postproc_inputs)
     preds = dict(zip(postproc_outputs, outs))
 
+    detect = []
     for j in range(int(preds["num_detections:0"])):
         # draw the roi
         class_j = int(preds["detection_classes:0"][0, j]) - 1
@@ -84,12 +85,13 @@ def process_detections(
         y_min = float(box_j[1] * frame.shape[1])
         y_max = float(box_j[3] * frame.shape[1])
         xyxy = [y_min, x_min, y_max, x_max]
+        detect.append((xyxy, score_j, cls_name))
         label = "{} {:0.4f}".format(cls_name, score_j)
         color = palette[cls_name]
         if dbg:
             print(f"{head}  >> [Post-proc] prediction: {score_j} - {cls_name} - {[round(i, 3) for i in xyxy]}{reset}")
         plot_box(xyxy, frame, label=label, color=color, line_thickness=2)
-    return frame
+    return frame, detect
 
 
 import onnxruntime as ort
