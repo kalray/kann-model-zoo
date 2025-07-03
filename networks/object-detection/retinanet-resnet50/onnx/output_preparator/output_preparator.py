@@ -91,17 +91,15 @@ def post_process(cfg, frame, nn_outputs, device='mppa', dbg=True, **kwargs):
     cls_head = output_tensors[:5]
     box_head = output_tensors[5:]
 
-    # TODO: investigate PostProcessing from source repository
     outs = detection_postprocess(frame, cls_head, box_head)
     if dbg:
         t2 = time.perf_counter()
         print('Post-processing NMS    elapsed time: %.3fms' % (1e3 * (t2 - t1)))
+
     # Process detections
     for *coord, conf, cls in outs:  # detections per image
-        input_h, _, input_w, _ = cfg['input_nodes_shape'][0]
         coord = numpy.expand_dims(numpy.array(coord), 0).round()
         ratio_wh = frame.shape[0] / frame.shape[1]
-        # coord = scale_coords((input_h, input_w), coord, frame.shape).round()
         xyxy = [
             int(coord[0][0]),
             int(coord[0][1] * ratio_wh),
