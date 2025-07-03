@@ -109,7 +109,6 @@ def filter_bboxes(
         return y
 
     # predictions shape is (1, N, 85)
-    print(predictions.shape)
     batch = predictions.shape[0]  # batch size
     candidates = numpy.abs(predictions[..., 4:]).max(2) > conf_thres  # candidates
     outs = [numpy.zeros((0, 6))] * batch
