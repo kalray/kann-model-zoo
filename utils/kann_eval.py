@@ -7,17 +7,18 @@
 # Script inspired by
 #   Inspired from : https://github.com/ultralytics/ultralytics/blob/main/ultralytics/engine/validator.py
 #
-# Authors: 
+# Authors:
 #   Quentin Muller, <qmuller@kalrayinc.com>
-#   Daniel Angulo, <dangulo@kalrayinc.com
+#   Daniel Angulo, <dangulo@kalrayinc.com>
 ###
 
 import os
 import re
-import time
-
+import sys
 import cv2
+import time
 import yaml
+import json
 import glob
 import numpy
 import psutil
@@ -31,15 +32,17 @@ import onnxruntime as rt
 
 from PIL import Image
 from tqdm import tqdm
-from collections import OrderedDict
 from io import StringIO
+from collections import OrderedDict
+from typing import Dict, Optional, Tuple
 
+from metrics import ClassifyMetrics
 from metrics import ObjDetectMetrics
 from metrics import box_iou
 from kann_utils import logger
+from utils import COCO
+from utils import IMAGENET
 from utils import WORKSPACE_PATH
-from utils import COCO_IDX2NAME
-
 
 class EvalKaNN_Base(object):
     """
@@ -55,7 +58,6 @@ class EvalKaNN_Base(object):
     """
 
     def __init__(self, id_to_names=None):
-
         self.id_to_names = id_to_names
         self.names_to_id = {v: k for k, v in id_to_names.items()}
         self.nc = len(id_to_names)
@@ -81,8 +83,7 @@ class EvalKaNN_Base(object):
         """
         Initialize metrics with class information.
         """
-        self.metrics.names = self.id_to_names
-        self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[], target_img=[])
+        return NotImplementedError
 
     def update_metrics(self, pred_gt_arrays):
         """
@@ -98,23 +99,7 @@ class EvalKaNN_Base(object):
         """
         Returns metrics statistics and results dictionary.
         """
-        # Convert lists of arrays to single concatenated arrays
-        stats = {}
-        for k, v in self.stats.items():
-            if v:  # Check if list is not empty
-                stats[k] = numpy.concatenate(v)
-            else:
-                stats[k] = numpy.array([])
-        self.nt_per_class = numpy.bincount(
-            stats["target_cls"].astype(int), minlength=self.nc
-        )
-        self.nt_per_image = numpy.bincount(
-            stats["target_img"].astype(int), minlength=self.nc
-        )
-        stats.pop("target_img", None)
-        if len(stats) and "tp" in stats and stats["tp"].any():
-            self.metrics.process(**stats)
-        return self.metrics.results_dict
+        return NotImplementedError
 
     def fuse_and_arrayize(self, results, references):
         """
@@ -136,9 +121,189 @@ class EvalKaNN_Base(object):
         return NotImplementedError
 
 
+class EvalKaNN_Classify(EvalKaNN_Base):
+    """
+    Class for evaluating classification results.
+    Attributes:
+        targets (List[numpy.ndarray]): Ground truth class labels for each image.
+        pred (List[numpy.ndarray]): Predicted top-k class indices for each image.
+        metrics (ClassifyMetrics): Metrics computation object.
+        topk (int): Number of top predictions to consider.
+        print_all (bool): Whether to print metrics for all classes.
+
+    Note:
+        topk can be less but not more than 5, this limit being
+        hardcoded on every classifiers' output preparator.
+    """
+
+    # Arbitrary value for empty/unknown class
+    # Unknown if a real class from a bigger Imagenet dataset
+    # or if its really not a class from Imagenet
+    UNKNOWN_CLASS_ID = -1
+
+    def __init__(self, id_to_names: Dict[int, str], topk: int = 5, print_all: bool = False) -> None:
+        super().__init__(id_to_names)
+        self.targets = None
+        self.preds = None
+        self.metrics = ClassifyMetrics()
+        self.topk = topk
+        self.print_all = print_all
+        self.seen = 0
+        self.images_per_class = None
+
+    def init_metrics(self) -> None:
+        """ Initialize metrics and prediction containers. """
+        self.metrics.names = self.id_to_names
+        self.preds = []
+        self.targets = []
+
+    def fuse_and_arrayize(self, results: Dict, references: Dict) -> Dict[str, Tuple]:
+        """
+        Process raw results and references into evaluation-ready arrays.
+        Args:
+            results: Dictionary mapping image_id to class predictions with scores.
+            references: Dictionary mapping image_id to ground truth class labels.
+        Returns:
+            Dictionary mapping image_id to tuples of (predictions_array, gt_class_id_array).
+        """
+        arrays_by_img = {}
+        all_image_ids = set(results.keys()) | set(references.keys())
+        for image_id in all_image_ids:
+            pred = self._predictions_to_array(results.get(image_id, {}))
+            gt_class_id = self._ground_truth_to_array(references.get(image_id))
+            arrays_by_img[image_id] = (pred, gt_class_id)
+        return arrays_by_img
+
+    def update_metrics(self, pred_gt_arrays: Tuple) -> None:
+        """
+        Update metrics with predictions and ground truth.
+        Args:
+            pred_gt_arrays: Tuple of (preds, gt_class_id).
+        """
+        predictions_array, gt_class_array = pred_gt_arrays
+        if predictions_array.shape[0] == 0:
+            # Handle empty predictions
+            self.preds.append(numpy.zeros((1, 0), dtype=numpy.int32))
+            self.targets.append(gt_class_array.astype(numpy.int32))
+            return
+
+        # Extract topk predictions in desceding order
+        sorted_indices = numpy.argsort(-predictions_array[:, 1])
+        sorted_predictions = predictions_array[sorted_indices]
+        class_indices = sorted_predictions[:, 0].astype(numpy.int32)
+        k = min(self.topk, len(class_indices))
+        top_indices = class_indices[:k]
+
+        # Store for evaluation
+        self.preds.append(numpy.array([top_indices], dtype=numpy.int32))
+        self.targets.append(gt_class_array.astype(numpy.int32))
+
+    def get_stats(self) -> Dict:
+        """
+        Calculate and return classification metrics.
+        Returns:
+            Dictionary of metrics.
+        """
+        self.metrics.process(self.targets, self.preds)
+        self.seen = len(self.targets)
+        # Count images per class, skipping value for empty
+        if hasattr(self.metrics, "ap_class_index") and self.metrics.ap_class_index is not None:
+            self.images_per_class = numpy.zeros(len(self.metrics.ap_class_index), dtype=int)
+            for target in self.targets:
+                if len(target) > 0:
+                    for i, c in enumerate(self.metrics.ap_class_index):
+                        if c in target and not self._is_unknown(c):
+                            self.images_per_class[i] += 1
+        return self.metrics.results_dict
+
+    def print_results(self) -> None:
+        """ Print formatted classification results. """
+        if not hasattr(self.metrics, "keys") or not self.metrics.keys:
+            # No results to print
+            return
+        logger.info("")
+        logger.info(("%22s" + "%11s" * 3) % ("Class", "Images", "top1_acc", f"top{self.topk}_acc"))
+        pf = "%22s" + "%11i" + "%11.3g" * 2  # print format
+        logger.info(pf % ("all", self.seen, self.metrics.top1, self.metrics.topk))
+        # Print per-class metrics
+        if self.print_all and hasattr(self.metrics, "ap_class_index") and self.metrics.ap_class_index is not None:
+            for i, class_id in enumerate(self.metrics.ap_class_index):
+                if not self._is_unknown(class_id):
+                    class_name = IMAGENET[class_id]
+                    class_name = class_name[0:19] # truncate to fit in column
+                    img_count = self.images_per_class[i] if self.images_per_class is not None else 0
+                    logger.info(pf % (
+                        class_name,
+                        img_count,
+                        self.metrics.class_top1[class_id],
+                        self.metrics.class_topk[class_id]
+                    ))
+
+    def _predictions_to_array(self, image_results: Dict) -> numpy.ndarray:
+        """
+        Convert image predictions dict to a structured numpy array.
+        Args:
+            image_results: Dictionary of class predictions for an image.
+        Returns:
+            Numpy array of shape (N,2) containing [class_idx, score] rows.
+        """
+        if not image_results:
+            return numpy.zeros((0, 2), dtype=numpy.float32)
+        all_preds = []
+        for class_name, scores in image_results.items():
+            score = scores[0]  # take the first score
+            class_idx = self._parse_class_id(class_name)
+            all_preds.append([class_idx, score])
+        return numpy.array(all_preds, dtype=numpy.float32)
+
+    def _ground_truth_to_array(self, gt_class: Optional[str]) -> numpy.ndarray:
+        """
+        Convert ground truth class string to a numpy array.
+        Args:
+            gt_class: Ground truth class string or None.
+        Returns:
+            Numpy array containing the ground truth class index.
+        """
+        class_idx = self._parse_class_id(gt_class)
+        return numpy.array([class_idx], dtype=numpy.int64)
+
+    def _parse_class_id(self, class_name_or_id) -> int:
+        """
+        Parse class ID from various formats (n00000000, string ID, or numeric ID)
+        Args:
+            class_name_or_id: Class identifier in string or numeric format
+        Returns:
+            int: Numeric class ID
+        """
+        if class_name_or_id is None:
+            return self.UNKNOWN_CLASS_ID
+        if isinstance(class_name_or_id, int):
+            return class_name_or_id
+        if isinstance(class_name_or_id, str):
+            if class_name_or_id.startswith('n'):
+                return int(class_name_or_id[1:])
+            return int(class_name_or_id)
+        raise ValueError(f"Unsupported class identifier format: {class_name_or_id}")
+
+    def _is_unknown(self, class_id: int) -> bool:
+        """
+        Check if a class ID represents an unknown class
+
+        Note:
+            Classes are considered "unknown" if they are either:
+            1. Valid ImageNet classes that don't appear in the ImageNet-A or ImageNet-O subsets
+            2. Not legitimate ImageNet classes at all
+        Args:
+            class_id: Numeric class ID
+        Returns:
+            bool: True if this is the sentinel value for empty class
+        """
+        return class_id == self.UNKNOWN_CLASS_ID or class_id not in IMAGENET.keys()
+
+
 class EvalKaNN_ObjDetect(EvalKaNN_Base):
     """
-    A class extending the EvalKaNN_Base class for validating results from an detection task.
+    A class extending the EvalKaNN_Base class for validating results from a detection task.
 
     Attributes:
         nt_per_class (dict): a dict containing the no. of instances per class over all images.
@@ -158,6 +323,13 @@ class EvalKaNN_ObjDetect(EvalKaNN_Base):
         self.metrics = ObjDetectMetrics()
         self.print_all = print_all
         self.seen = 0
+
+    def init_metrics(self):
+        """
+        Initialize metrics with class information.
+        """
+        self.metrics.names = self.id_to_names
+        self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[], target_img=[])
 
     def get_precision(self, detections, gt_bboxes, gt_cls):
         """
@@ -221,13 +393,11 @@ class EvalKaNN_ObjDetect(EvalKaNN_Base):
             # Convert to arrays
             gt_bboxes_array = (
                 numpy.array(gt_bboxes, dtype=numpy.float32)
-                if gt_bboxes
-                else numpy.zeros((0, 4), dtype=numpy.float32)
+                if gt_bboxes else numpy.zeros((0, 4), dtype=numpy.float32)
             )
             gt_cls_array = (
                 numpy.array(gt_cls, dtype=numpy.int64)
-                if gt_cls
-                else numpy.zeros(0, dtype=numpy.int64)
+                if gt_cls else numpy.zeros(0, dtype=numpy.int64)
             )
             arrays_by_img[image_id] = (detections_array, gt_bboxes_array, gt_cls_array)
         return arrays_by_img
@@ -299,6 +469,28 @@ class EvalKaNN_ObjDetect(EvalKaNN_Base):
         tp = correct.astype(bool)
         return tp
 
+    def get_stats(self):
+        """
+        Returns metrics statistics and results dictionary.
+        """
+        # Convert lists of arrays to single concatenated arrays
+        stats = {}
+        for k, v in self.stats.items():
+            if v:  # Check if list is not empty
+                stats[k] = numpy.concatenate(v)
+            else:
+                stats[k] = numpy.array([])
+        self.nt_per_class = numpy.bincount(
+            stats["target_cls"].astype(int), minlength=self.nc
+        )
+        self.nt_per_image = numpy.bincount(
+            stats["target_img"].astype(int), minlength=self.nc
+        )
+        stats.pop("target_img", None)
+        if len(stats) and "tp" in stats and stats["tp"].any():
+            self.metrics.process(**stats)
+        return self.metrics.results_dict
+
     def print_results(self):
         """
         Print validation metrics per class.
@@ -338,15 +530,17 @@ class EvalKaNN_ObjDetect(EvalKaNN_Base):
         logger.info("")
 
 
-def check_coco_dataset(dataset):
+def check_dataset(dataset):
     """
-    Check if the COCO dataset is already present, else download it
+    Check if the COCO or ImageNet dataset is already present, else download it
     and place it in "./datasets" folder.
 
     Args:
-        dataset (str): the name of the dataset ("coco8", "coco128" or "coco").
+        dataset (str): the name of the dataset ("coco8", "coco128", "coco",
+            "imagenet-a" or "imagenet-o").
     """
-    dataset_path = os.path.join(WORKSPACE_PATH, "utils", "datasets", dataset)
+    datasets_dir_path = dataset_path = os.path.join(WORKSPACE_PATH, "utils", "datasets")
+    dataset_path = os.path.join(datasets_dir_path, dataset)
     if not os.path.exists(dataset_path):
         logger.warning(f"The dataset {dataset} does not exist. Downloading...")
         if dataset == "coco":
@@ -361,10 +555,16 @@ def check_coco_dataset(dataset):
             os.system(f"rm -f {WORKSPACE_PATH}/utils/datasets/coco/val2017.zip")
             shutil.rmtree(f"{WORKSPACE_PATH}/utils/datasets/coco/images/train2017", ignore_errors=True)
             shutil.rmtree(f"{WORKSPACE_PATH}/utils/datasets/coco/labels/train2017", ignore_errors=True)
-        else:
+        elif dataset == "coco8" or dataset == "coco128":
             dataset_url = f"https://github.com/ultralytics/assets/releases/download/v0.0.0/{dataset}.zip"
             os.system(f"wget {dataset_url} -P {WORKSPACE_PATH}/utils/datasets/")
             os.system(f"unzip {WORKSPACE_PATH}/utils/datasets/{dataset}.zip -d {WORKSPACE_PATH}/utils/datasets/")
+            logger.info(f"Dataset {dataset} downloaded and extracted to {os.path.join(dataset_path, dataset)}")
+        elif dataset == "imagenet-a" or "imagenet-o":
+            print(f"WORKSPACE_PATH = {WORKSPACE_PATH}")
+            dataset_url = f"https://people.eecs.berkeley.edu/~hendrycks/{dataset}.tar"
+            os.system(f"wget {dataset_url} -P {WORKSPACE_PATH}/utils/datasets/")
+            os.system(f"tar -xf {WORKSPACE_PATH}/utils/datasets/{dataset}.tar -C {WORKSPACE_PATH}/utils/datasets/")
             logger.info(f"Dataset {dataset} downloaded and extracted to {os.path.join(dataset_path, dataset)}")
 
     if dataset == "coco":
@@ -377,6 +577,10 @@ def check_coco_dataset(dataset):
             return data_img_path
     elif dataset == "coco8":
         data_img_path = os.path.join(dataset_path, "images", "val")
+        if os.path.isdir(data_img_path):
+            return data_img_path
+    elif dataset == "imagenet-a" or dataset == "imagenet-o":
+        data_img_path = os.path.join(dataset_path)
         if os.path.isdir(data_img_path):
             return data_img_path
     else:
@@ -405,15 +609,20 @@ def parse_results(flog):
         try:
             # Split into components (e.g., "0.43 - laptop - [x1, y1, x2, y2]")
             parts = line.split(":")[-1].strip().split(" - ")
-            if len(parts) != 3:
+            if len(parts) < 2 or len(parts) > 3:
                 logger.warning("There was a malformed line while parsing results from the output preparator.")  # Skip malformed lines
             score = float(parts[0].strip())
             label = parts[1].strip()
-            bbox = [float(coord.strip()) for coord in parts[2].strip("[]").split(",")]
-            # Ensure bbox has 4 coordinates (x1, y1, x2, y2)
-            if len(bbox) != 4:
-                logger.warning("There was a malformed bbox while parsing results from the output preparator.")  # Skip invalid bboxes
-            detections.append((bbox, score, label))
+
+            if len(parts) == 3:
+                bbox = [float(coord.strip()) for coord in parts[2].strip("[]").split(",")]
+                # Ensure bbox has 4 coordinates (x1, y1, x2, y2)
+                if len(bbox) != 4:
+                    logger.warning("There was a malformed bbox while parsing results from the output preparator.")  # Skip invalid bboxes
+                detections.append((bbox, score, label))
+            else:
+                label = label.split(" ")[0]
+                detections.append((score, label))
         except (ValueError, IndexError) as e:
             logger.warning(f"Failed to parse line: {line}\nError: {e}")
             continue
@@ -476,7 +685,7 @@ def get_chunks_sizes(io_sizes, num_images, proportion_ram=0.33):
     return chunks, io_size_per_img_mb * num_images
 
 
-def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
+def run(gen_dir, dataset_img_path, metrics, device="mppa", ratio_ram=0.33, debug=False):
     """
     Based on mppa or cpu, execute the network runtime on all of the images
     of the dataset, then capture the printed outputs by the postprocess()
@@ -496,16 +705,31 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
             detections in the form of a list of tuples (conf, [bounding_box]).
     """
     # Load images and prepare the environment
-    image_paths = sorted(
-        glob.iglob(f"{dataset_img_path}/*.jpg", recursive=True)
-    )
+    image_paths = []
+    image_ext = ["jpg", "jpeg", "JPEG"]
+    for extension in image_ext:
+        image_paths.extend(glob.iglob(f"{dataset_img_path}/**/*.{extension}", recursive=True))
+    image_paths = sorted(image_paths)
     if len(image_paths) == 0:
         raise FileNotFoundError(f'File not found at this path {dataset_img_path}')
 
     # Parse data from .yaml file
-    network_config = [f for f in os.listdir(gen_dir) if f.endswith(".yaml")][0]
-    with open(os.path.join(gen_dir, network_config), "r") as f:
+    yaml_config = [f for f in os.listdir(gen_dir) if f.endswith(".yaml")][0]
+    if not yaml_config:
+        raise FileNotFoundError("yaml file does not exist in gen_dir.")
+    with open(os.path.join(gen_dir, yaml_config), "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+
+    # Parse data from .json file
+    json_config = [f for f in os.listdir(gen_dir) if f.endswith(".json")][0]
+    if not json_config:
+        raise FileNotFoundError("json file does not exist in gen_dir.")
+    with open(os.path.join(gen_dir, json_config), "r") as j:
+        io = json.load(j)
+        for key in io:
+            if not config[key]:
+                config[key] = io[key]
+
     extra_data = config["extra_data"]
     config["classes_file"] = os.path.join(gen_dir, extra_data["classes"])
 
@@ -573,7 +797,7 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
                     locker.release()
                 detections = parse_results(
                     captured_output.splitlines()
-                )  # Entries of the form (conf, label, bbox)
+                )  # Entries of the form (conf, label, (possibly bbox))
             else:
                 raise RuntimeError("The call to 'output_process_eval' method from output_preparator.py failed")
         except Exception as err:
@@ -581,15 +805,29 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
 
         # RESULT STORING STAGE
         res[img_id] = {}
-        for bbox, conf, label in detections:
-            if debug:
-                logger.info(f"id: {img_id} - label:{label:15s}, conf:{conf:1.4f}, xyxy:{bbox}")
+        for detection in detections:
+            if len(detection) == 3:
+                # Object detection: (bbox, conf, label)
+                bbox, conf, label = detection
+                detection_data = (conf, bbox)
+                if debug:
+                    logger.info(f"id: {img_id} - label:{label:15s}, conf:{conf:1.4f}, xyxy:{bbox}")
+            elif len(detection) == 2:
+                # Classification: (conf, label)
+                conf, label = detection
+                detection_data = conf
+                if debug:
+                    logger.info(f"id: {img_id} - label:{label:15s}, conf:{conf:1.4f}")
+            else:
+                logger.warning(f"Unexpected detection format: {detection}")
+                continue
+
             if locker is not None:
                 locker.acquire()
             if label in res[img_id]:
-                res[img_id][label].append((conf, bbox))
+                res[img_id][label].append(detection_data)
             else:
-                res[img_id][label] = [(conf, bbox)]
+                res[img_id][label] = [detection_data]
             if locker is not None:
                 locker.release()
 
@@ -633,7 +871,7 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
             t_start = time.perf_counter()
             with open(f".tmp_io/{config['input_nodes_name'][0]}", "w+") as f:
                 for image_path in image_paths[start_idx:end_idx]:
-                    image_id = os.path.basename(image_path).removesuffix(".jpg")
+                    image_id = os.path.splitext(os.path.basename(image_path))[0]
                     content = cv2.imread(image_path)
                     prepared = prepare.prepare_img(content)
                     shapes_by_img[image_id] = content.shape
@@ -740,7 +978,7 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
 
             # INPUT PROCESSING STAGE
             t_start = time.perf_counter()
-            image_id = os.path.basename(img_path).removesuffix(".jpg")
+            image_id = os.path.splitext(os.path.basename(img_path))[0]
             content = cv2.imread(img_path)
             image_shape = content.shape
             prepared = prepare.prepare_img(content)
@@ -826,7 +1064,30 @@ def print_results(data):
     print("\n")
 
 
-def load_references(dataset_img_path):
+def load_imagenet_references(dataset_img_path):
+    """
+    Load references from a dataset path, and format them correctly
+    to return a dictionary. The coordinates labels are of the
+    form (center_x, center_y, width, height)
+
+    Args:
+        dataset_path (str): the path of the dataset.
+    Returns:
+        references (dict): containing the ground truth for every image
+            as key.
+    """
+    references = dict()
+    for folder in os.listdir(dataset_img_path):
+        if folder == "README.txt":
+            continue  # Skip files, only process directories
+        class_imgs_path = os.path.join(dataset_img_path, folder)
+        for img in os.listdir(class_imgs_path):
+            img = os.path.splitext(os.path.basename(img))[0]
+            references[img] = folder
+    return references
+
+
+def load_coco_references(dataset_img_path):
     """
     Load references from a dataset path, and format them correctly
     to return a dictionary. The coordinates labels are of the
@@ -897,8 +1158,8 @@ def load_references(dataset_img_path):
             y2 = max(0., min(y2, float(img_height)))
 
             # Map class ID to COCO name
-            if class_id in COCO_IDX2NAME:
-                class_name = COCO_IDX2NAME[class_id]
+            if class_id in COCO:
+                class_name = COCO[class_id]
                 if class_name not in references[image_id]:
                     references[image_id][class_name] = []
                 references[image_id][class_name].append([x1, y1, x2, y2])
@@ -915,7 +1176,6 @@ def get_classes_id(generated_dir):
     Returns:
         result (dict): containing the class_id {id(int): label_id(str)}.
     """
-
     if not os.path.isdir(generated_dir):
         raise NotADirectoryError(f"Generated DIR {generated_dir} not found")
     yaml_file_path = os.path.join(generated_dir, "network.dump.yaml")
@@ -928,12 +1188,14 @@ def get_classes_id(generated_dir):
         classes = [l.rstrip("\n") for l in fclasses.readlines()]
 
     result = dict()
-    if len(classes[0].split(" ")) == 2:
-        result = {int(id.split(" ")[0]): id.split(" ")[-1] for id in classes}
-    elif len(classes[0].split(" ")) == 1:
+    if len(classes[0].split(" ")) == 1:         # line struct: <label_id>
         result = {id: name for id, name in enumerate(classes)}
+    elif len(classes[0].split(" ")) == 2:       # line struct: <0 label_id>
+        result = {int(id.split(" ")[0]): id.split(" ")[-1] for id in classes}
+    elif classes[0].split(" ")[0][0] == 'n':    # line struct: <n00000000 label_id>
+        result = {line.split(" ", 1)[0]: line.split(" ", 1)[1] for line in classes}
     else:
-        raise ValueError(f"{class_path_file} format is not as expected <0 label_id> or <label_id> per row-line")
+        raise ValueError(f"{class_path_file} format is not as expected <n00000000 label_id>, <0 label_id>, <label_id> per row-line")
     return result
 
 
@@ -956,16 +1218,18 @@ def main(opt):
 
     # Check dataset file system
     # Download dataset if it does not exists
+    dataset_image_path = check_dataset(dataset)
     if opt.metrics == "mAP":
-        dataset_image_path = check_coco_dataset(dataset)
+        references = load_coco_references(dataset_image_path)
+    elif opt.metrics == "topk":
+        references = load_imagenet_references(dataset_image_path)
     else:
-        return NotImplementedError(f"Other metrics than mAP are not implemented yet, get {opt.metrics}")
-    references = load_references(dataset_image_path)
+        return NotImplementedError(f"Other metrics than topk and mAP are not implemented yet, get {opt.metrics}")
 
     # Start evaluation
     t_start = time.perf_counter()
     gen_dir = os.path.realpath(gen_dir)
-    results = run(gen_dir, dataset_image_path, device, debug=debug)
+    results = run(gen_dir, dataset_image_path, opt.metrics, device, debug=debug)
     if debug:
         print_results(results)
 
@@ -973,11 +1237,14 @@ def main(opt):
     class_names = get_classes_id(gen_dir)
     if opt.metrics == "mAP":
         EvalKaNN_ObjDetect(class_names, print_all_classes)(results, references)
+    if opt.metrics == "topk":
+        topk = 5 # can be less but can't be more than 5
+        EvalKaNN_Classify(class_names, topk, print_all_classes)(results, references)
     else:
-        return NotImplementedError(f"Other metrics than mAP are not implemented yet, get {opt.metrics}")
+        return NotImplementedError(f"Other metrics than topk and mAP are not implemented yet, get {opt.metrics}")
     t_end = time.perf_counter()
     if not print_all_classes:
-        logger.info("For details, please use --all (or -a) to print mAP for all classes")
+        logger.info("For details, please use --all (or -a) to print the metric value for all classes")
     logger.info(f"Evaluation time on {dataset.upper()} takes {t_end - t_start:.3f} secs.")
 
 
@@ -995,7 +1262,7 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="Type of metrics evaluation (top-k, mAP, mIoU)",
-        choices=["mAP"],  # TODO: future: topk, mIoU
+        choices=["mAP", "topk"],  # TODO: future: mIoU
     )
     parser.add_argument(
         "--dataset",
@@ -1019,7 +1286,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--debug", "-dbg",
         action='store_true',
-        help="print bounding box for comparison",
+        help="print results for comparison",
         default=False,
     )
     args = parser.parse_args()

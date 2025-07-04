@@ -7,9 +7,9 @@
 # Script inspired by
 #   https://github.com/ultralytics/ultralytics/blob/main/ultralytics/utils/metrics.py
 #
-# Authors: 
+# Authors:
 #   Quentin Muller, <qmuller@kalrayinc.com>
-#   Daniel Angulo, <dangulo@kalrayinc.com
+#   Daniel Angulo, <dangulo@kalrayinc.com>
 ###
 
 import numpy
@@ -196,6 +196,88 @@ class Metrics(object):
             [self.px, self.p_curve, "Confidence", "Precision"],
             [self.px, self.r_curve, "Confidence", "Recall"],
         ]
+
+
+class ClassifyMetrics(object):
+    """
+    Class for computing classification metrics including top-1 and top-k accuracy.
+
+    Attributes:
+        top1 (float): The top-1 accuracy.
+        topk (float): The top-k accuracy (by default 5).
+        class_top1 (dict): Per-class top-1 accuracy.
+        class_topk (dict): Per-class top-k accuracy.
+        class_counts (dict): Number of instances per class.
+        ap_class_index (list): List of class indices with data.
+        speed (Dict[str, float]): A dictionary containing the time taken for each step in the pipeline.
+        fitness (float): The fitness of the model, which is equal to top-k accuracy.
+        results_dict (Dict[str, Union[float, str]]): A dictionary containing the classification metrics and fitness.
+        keys (List[str]): A list of keys for the results_dict.
+
+    Methods:
+        process(targets, pred): Processes the targets and predictions to compute classification metrics.
+        class_result(i): Returns metrics for a specific class index.
+    """
+
+    def __init__(self) -> None:
+        """Initialize a ClassifyMetrics instance."""
+        self.top1 = 0
+        self.topk = 0
+        self.class_top1 = {}
+        self.class_topk = {}
+        self.class_counts = {}
+        self.ap_class_index = []
+        self.names = {}
+        self.speed = {"preprocess": 0.0, "inference": 0.0, "loss": 0.0, "postprocess": 0.0}
+        self.task = "classify"
+
+    def process(self, targets, pred):
+        """Target classes and predicted classes."""
+        pred, targets = numpy.concatenate(pred), numpy.concatenate(targets)
+        correct = (targets[:, None] == pred).astype(numpy.float32)
+        acc = numpy.column_stack((correct[:, 0], correct.max(1)))  # (top1, topk) accuracy
+        self.top1, self.topk = acc.mean(0).tolist()
+        unique_classes = numpy.unique(targets)
+        self.ap_class_index = unique_classes.tolist()
+        # Compute per-class accuracy
+        for cls in unique_classes:
+            cls_indices = numpy.where(targets == cls)[0]
+            cls_count = len(cls_indices)
+            self.class_counts[int(cls)] = cls_count
+            if cls_count > 0:
+                cls_correct = correct[cls_indices]
+                self.class_top1[int(cls)] = float(cls_correct[:, 0].mean())
+                self.class_topk[int(cls)] = float(cls_correct.max(1).mean())
+
+    def class_result(self, i):
+        """Return accuracy metrics for a specific class index."""
+        cls = self.ap_class_index[i]
+        return self.class_top1.get(cls, 0), self.class_topk.get(cls, 0)
+
+    @property
+    def fitness(self):
+        """Returns mean of top-1 and top-k accuracies as fitness score."""
+        return (self.top1 + self.topk) / 2
+
+    @property
+    def results_dict(self):
+        """Returns a dictionary with model's performance metrics and fitness score."""
+        return dict(zip(self.keys + ["fitness"], [self.top1, self.topk, self.fitness]))
+
+    @property
+    def keys(self):
+        """Returns a list of keys for the results_dict property."""
+        return ["metrics/accuracy_top1", "metrics/accuracy_topk"]
+
+    @property
+    def curves(self):
+        """Returns a list of curves for accessing specific metrics curves."""
+        return []
+
+    @property
+    def curves_results(self):
+        """Returns a list of curves for accessing specific metrics curves."""
+        return []
 
 
 class ObjDetectMetrics(object):

@@ -54,3 +54,34 @@ def post_process(cfg, frame, nn_outputs, **kwargs):
     if kwargs["dbg"]:
         print(f"{head}  >> [Post-proc] prediction: {legend[0]}{reset}")
     return frame
+
+
+def post_process_eval(cfg, frame, nn_outputs, device='mppa', dbg=False, **kwargs):
+    """Only extracts detections and returns them as a tuple (the frame is usually a dummy)"""
+    global classes
+    topk = 5 # hardcoded max topk for top accuracy
+
+    for name, shape in zip(nn_outputs.keys(), cfg['output_nodes_shape']):
+        nn_outputs[name] = nn_outputs[name].reshape(shape)
+
+    if classes is None:
+        classes = [cl.strip() for cl in cfg['classes'] if cl.strip() != '']
+    nb_classes = len(classes)
+
+    # analyze the result
+    assert len(nn_outputs) == 1
+    output = list(nn_outputs.values())[0]
+    output = process_nn_outputs(output)
+    sorted_indices = output.argsort()
+
+    # Ensure topk doesn't exceed the number of classes
+    display_count = min(topk, nb_classes)
+
+    detections = []
+    # last <display_count> classes of the list, starting from the end
+    for i in sorted_indices[nb_classes - 1:nb_classes - 1 - display_count:-1]:
+        class_id = classes[i].split(" ")[0]
+        score = output[i]
+        detections.append((score, class_id))
+
+    return frame, detections
