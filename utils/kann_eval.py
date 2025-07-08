@@ -530,9 +530,41 @@ class EvalKaNN_ObjDetect(EvalKaNN_Base):
         logger.info("")
 
 
+def load_preparators(gen_dir, config):
+    """
+    Load input and output preparator modules for neural network processing.
+    Args:
+        gen_dir (str): Path to the generated neural network folder
+        config (dict): Configuration dictionary containing preparator paths
+    Returns:
+        tuple: (input_preparator, output_preparator) modules
+    """
+    # Prepare file paths
+    input_prep_path = os.path.join(gen_dir, config['input_preparator'])
+    output_prep_dir = os.path.join(gen_dir, config['output_preparator'])
+    output_prep_path = os.path.join(output_prep_dir, "output_preparator.py")
+    if not os.path.exists(input_prep_path):
+        raise FileNotFoundError(f"Input preparator not found at {input_prep_path}")
+    if not os.path.exists(output_prep_path):
+        raise FileNotFoundError(f"Output preparator not found at {output_prep_path}")
+    # Clean sys.path to avoid conflicts and ensure correct order
+    for path in [gen_dir, output_prep_dir, os.path.dirname(input_prep_path)]:
+        if path in sys.path:
+            sys.path.remove(path)
+    # Add paths in correct order (most specific first)
+    sys.path.insert(0, os.path.dirname(input_prep_path))
+    sys.path.insert(0, output_prep_dir)  # Output prep dir needs to be first for relative imports
+    sys.path.insert(0, gen_dir)
+    # Import preparators
+    input_prep_name = os.path.splitext(os.path.basename(input_prep_path))[0]
+    prepare = __import__(input_prep_name)
+    output_preparator = __import__("output_preparator")
+    return prepare, output_preparator
+
+
 def check_dataset(dataset):
     """
-    Check if the COCO or ImageNet dataset is already present, else download it
+    Check if the dataset is already present, else download it
     and place it in "./datasets" folder.
 
     Args:
@@ -685,7 +717,7 @@ def get_chunks_sizes(io_sizes, num_images, proportion_ram=0.33):
     return chunks, io_size_per_img_mb * num_images
 
 
-def run(gen_dir, dataset_img_path, metrics, device="mppa", ratio_ram=0.33, debug=False):
+def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
     """
     Based on mppa or cpu, execute the network runtime on all of the images
     of the dataset, then capture the printed outputs by the postprocess()
@@ -704,6 +736,7 @@ def run(gen_dir, dataset_img_path, metrics, device="mppa", ratio_ram=0.33, debug
             results. The value is also a dictionary containing, for every label, the
             detections in the form of a list of tuples (conf, [bounding_box]).
     """
+
     # Load images and prepare the environment
     image_paths = []
     image_ext = ["jpg", "jpeg", "JPEG"]
@@ -729,7 +762,7 @@ def run(gen_dir, dataset_img_path, metrics, device="mppa", ratio_ram=0.33, debug
         for key in io:
             if not config[key]:
                 config[key] = io[key]
-
+  
     extra_data = config["extra_data"]
     config["classes_file"] = os.path.join(gen_dir, extra_data["classes"])
 
@@ -746,12 +779,8 @@ def run(gen_dir, dataset_img_path, metrics, device="mppa", ratio_ram=0.33, debug
     # Delete leading '/' for output_node (does not allow for path joining)
     output_nodes = config["output_nodes_name"]
 
-    # Load input and output preparators
-    module_dir = os.path.relpath(gen_dir, WORKSPACE_PATH).replace("/", ".")
-    inproc_module_name = f"{module_dir}.{config['input_preparator'].replace('.py', '')}"
-    prepare = importlib.import_module(inproc_module_name)
-    outproc_module_name = f"{module_dir}.{config['output_preparator']}.output_preparator"
-    output_preparator = importlib.import_module(outproc_module_name)  # For output processing, later
+    # Load preparators
+    prepare, output_preparator = load_preparators(gen_dir, config)
 
     results = OrderedDict()  # Dict to be returned
     conf_th = 0.01
@@ -1229,7 +1258,7 @@ def main(opt):
     # Start evaluation
     t_start = time.perf_counter()
     gen_dir = os.path.realpath(gen_dir)
-    results = run(gen_dir, dataset_image_path, opt.metrics, device, debug=debug)
+    results = run(gen_dir, dataset_image_path, device, debug=debug)
     if debug:
         print_results(results)
 
