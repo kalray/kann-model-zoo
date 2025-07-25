@@ -42,7 +42,7 @@ def infer(all_options):
     # Generate command to run
     infer_p = None
     print(all_options[1])
-    cmd_args = ["kann", "run", options.generated_dir] + all_options[1]
+    cmd_args = ["kann", "run", "--bin", args.bin_file, options.generated_dir] + all_options[1]
     try:
         logger.info("Running: {}".format(" ".join(cmd_args)))
         infer_p = subprocess.Popen(
@@ -83,7 +83,7 @@ def infer(all_options):
     for line in ilog:
         if line.startswith("Total: "):
             mean_perf_mppa_cycles = int(line.split(" ")[1])
-        if line.startswith("[app][host] Performance of frame "):
+        if "Performance of frame " in line:
             perf_host_qps.append(float(line.split(" ")[-2]))
             perf_host_ms.append(float(line.split(" ")[5]))
     logger.info(f"***********************************")
@@ -251,7 +251,6 @@ if __name__ == "__main__":
             os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l1.elf"
         elif args.enable_l2_cache:
             os.environ["POCL_MPPA_FIRMWARE_NAME"] = "ocl_fw_l2_d_1m.elf"
-
         if args.bin_file is None:
             bin_path = shutil.which('kann_opencl_cnn')
             if bin_path is not None:
@@ -261,6 +260,8 @@ if __name__ == "__main__":
                 args.bin_file = os.path.join(os.environ.get('KALRAY_TOOLCHAIN_DIR'), "bin", "kann_opencl_cnn")
             else:
                 raise RuntimeError("KALRAY_TOOLCHAIN_DIR is not set, please source Kalray toolchain first")
+        else:
+            args.bin_file = shutil.which(args.bin_file)
 
         if args.pocl_dir is None:
             pocl_file_path = os.environ.get('KANN_POCL_FILE')
