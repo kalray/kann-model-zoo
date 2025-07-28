@@ -558,7 +558,7 @@ def load_preparators(gen_dir, config):
     # Import preparators
     input_prep_name = os.path.splitext(os.path.basename(input_prep_path))[0]
     prepare = __import__(input_prep_name)
-    output_preparator = __import__("output_preparator")
+    output_preparator = __import__("output_preparator.output_preparator", fromlist=["output_preparator"])
     return prepare, output_preparator
 
 
@@ -796,41 +796,38 @@ def run(gen_dir, dataset_img_path, device="mppa", ratio_ram=0.33, debug=False):
         dummy_frame = numpy.zeros(img_shape, dtype=numpy.int32)
         # TODO: once all networks have this method, remoce the conditional block
         #  to replace by "detect = output_preparator.post_process_eval"
-        try:
-            if hasattr(output_preparator, "post_process_eval"):
-                _, detections = output_preparator.post_process_eval(
+        if hasattr(output_preparator, "post_process_eval"):
+            _, detections = output_preparator.post_process_eval(
+                cfg=config,
+                frame=dummy_frame,
+                nn_outputs=input_postproc,
+                device=device,
+                conf_thres=conf_th,
+                iou_thres=iou_th,
+                dbg=False,
+            )
+        elif hasattr(output_preparator, "post_process"):  # because not all networks have post_process_eval
+            if locker is not None:
+                locker.acquire()
+            output_buffer = StringIO()
+            with contextlib.redirect_stdout(output_buffer):
+                output_preparator.post_process(
                     cfg=config,
                     frame=dummy_frame,
                     nn_outputs=input_postproc,
                     device=device,
                     conf_thres=conf_th,
                     iou_thres=iou_th,
-                    dbg=False,
+                    dbg=True,
                 )
-            elif hasattr(output_preparator, "post_process"):  # because not all networks have post_process_eval
-                if locker is not None:
-                    locker.acquire()
-                output_buffer = StringIO()
-                with contextlib.redirect_stdout(output_buffer):
-                    output_preparator.post_process(
-                        cfg=config,
-                        frame=dummy_frame,
-                        nn_outputs=input_postproc,
-                        device=device,
-                        conf_thres=conf_th,
-                        iou_thres=iou_th,
-                        dbg=True,
-                    )
-                captured_output = output_buffer.getvalue()
-                if locker is not None:
-                    locker.release()
-                detections = parse_results(
-                    captured_output.splitlines()
-                )  # Entries of the form (conf, label, (possibly bbox))
-            else:
-                raise RuntimeError("The call to 'output_process_eval' method from output_preparator.py failed")
-        except Exception as err:
-            raise RuntimeError(f" Issue on {img_id} : {err}")
+            captured_output = output_buffer.getvalue()
+            if locker is not None:
+                locker.release()
+            detections = parse_results(
+                captured_output.splitlines()
+            )  # Entries of the form (conf, label, (possibly bbox))
+        else:
+            raise RuntimeError("The call to 'output_process_eval' method from output_preparator.py does not exists")
 
         # RESULT STORING STAGE
         res[img_id] = {}
@@ -1219,10 +1216,10 @@ def get_classes_id(generated_dir):
     result = dict()
     if len(classes[0].split(" ")) == 1:         # line struct: <label_id>
         result = {id: name for id, name in enumerate(classes)}
+    elif classes[0].split(" ")[0][0] == 'n':    # line struct: <n00000000 label_id>
+        result = {int(id.split(" ")[0][1:]): id.split(" ")[-1] for id in classes}
     elif len(classes[0].split(" ")) == 2:       # line struct: <0 label_id>
         result = {int(id.split(" ")[0]): id.split(" ")[-1] for id in classes}
-    elif classes[0].split(" ")[0][0] == 'n':    # line struct: <n00000000 label_id>
-        result = {line.split(" ", 1)[0]: line.split(" ", 1)[1] for line in classes}
     else:
         raise ValueError(f"{class_path_file} format is not as expected <n00000000 label_id>, <0 label_id>, <label_id> per row-line")
     return result
