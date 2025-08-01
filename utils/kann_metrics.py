@@ -14,6 +14,497 @@
 
 import numpy
 
+from typing import Dict, Optional, Tuple
+
+from utils import IMAGENET
+from kann_utils import logger
+
+
+class EvalKaNN_Base(object):
+    """
+    A base class to evaluate metrics that work with pre-computed results.
+    This class implements the methods __init__, and match_predictions().
+    It also declares other methods for metrics computation, to be implemented by its subclasses.
+
+    Attributes:
+        names (dict): a dict containing the mapping of class indices to class names.
+        seen (Any): records the number of images seen so far during validation.
+        stats (dict): placeholder for statistics during validation.
+        nc (int): number of classes.
+    """
+
+    def __init__(self, id_to_names=None):
+        self.id_to_names = id_to_names
+        self.names_to_id = {v: k for k, v in id_to_names.items()}
+        self.nc = len(id_to_names)
+        self.seen = None
+        self.stats = None
+
+    def __call__(self, results, references):
+        """
+        Executes validation process using pre-computed results.
+
+        Args:
+            tensors_by_img (dict):  a dict of tuples of the form (detections, gt_bboxes, gt_cls),
+                                    each element being a numpy.ndarray.
+        """
+        self.init_metrics()
+        arrays_by_img = self.fuse_and_arrayize(results, references)
+        for k in sorted(arrays_by_img):
+            self.update_metrics(arrays_by_img[k])
+        self.get_stats()
+        self.print_results()
+
+    def init_metrics(self):
+        """
+        Initialize metrics with class information.
+        """
+        return NotImplementedError
+
+    def update_metrics(self, pred_gt_arrays):
+        """
+        Update the stats dictionary by processing the detections and ground truth arrays.
+
+        Args:
+            pred_gt_arrays (tuple): a tuple of three numpy.ndarrays containing information
+                about detections and ground truth.
+        """
+        return NotImplementedError
+
+    def get_stats(self):
+        """
+        Returns metrics statistics and results dictionary.
+        """
+        return NotImplementedError
+
+    def fuse_and_arrayize(self, results, references):
+        """
+        Fuses dictionaries by entry (since both dicts' keys are the same: images' id),
+        then converts them to evaluation-ready arrays.
+        """
+        return NotImplementedError
+
+    def match_predictions(self, pred_classes, true_classes):
+        """
+        Matches predictions to ground truth objects (pred_classes, true_classes)
+        """
+        return NotImplementedError
+
+    def print_results(self):
+        """
+        Print validation metrics per class.
+        """
+        return NotImplementedError
+
+
+class EvalKaNN_Classify(EvalKaNN_Base):
+    """
+    Class for evaluating classification results.
+    Attributes:
+        targets (List[numpy.ndarray]): Ground truth class labels for each image.
+        pred (List[numpy.ndarray]): Predicted top-k class indices for each image.
+        metrics (ClassifyMetrics): Metrics computation object.
+        topk (int): Number of top predictions to consider.
+        print_all (bool): Whether to print metrics for all classes.
+
+    Note:
+        topk can be less but not more than 5, this limit being
+        hardcoded on every classifiers' output preparator.
+    """
+
+    # Arbitrary value for empty/unknown class
+    # Unknown if a real class from a bigger Imagenet dataset
+    # or if its really not a class from Imagenet
+    UNKNOWN_CLASS_ID = -1
+
+    def __init__(self, id_to_names: Dict[int, str], print_all: bool = False) -> None:
+        super().__init__(id_to_names)
+        self.targets = None
+        self.preds = None
+        self.metrics = ClassifyMetrics()
+        self.topk = 5
+        self.print_all = print_all
+        self.seen = 0
+        self.images_per_class = None
+
+    def init_metrics(self) -> None:
+        """ Initialize metrics and prediction containers. """
+        self.metrics.names = self.id_to_names
+        self.preds = []
+        self.targets = []
+
+    def fuse_and_arrayize(self, results: Dict, references: Dict) -> Dict[str, Tuple]:
+        """
+        Process raw results and references into evaluation-ready arrays.
+        Args:
+            results: Dictionary mapping image_id to class predictions with scores.
+            references: Dictionary mapping image_id to ground truth class labels.
+        Returns:
+            Dictionary mapping image_id to tuples of (predictions_array, gt_class_id_array).
+        """
+        arrays_by_img = {}
+        all_image_ids = set(results.keys()) | set(references.keys())
+        for image_id in all_image_ids:
+            pred = self._predictions_to_array(results.get(image_id, {}))
+            gt_class_id = self._ground_truth_to_array(references.get(image_id))
+            arrays_by_img[image_id] = (pred, gt_class_id)
+        return arrays_by_img
+
+    def update_metrics(self, pred_gt_arrays: Tuple) -> None:
+        """
+        Update metrics with predictions and ground truth.
+        Args:
+            pred_gt_arrays: Tuple of (preds, gt_class_id).
+        """
+        predictions_array, gt_class_array = pred_gt_arrays
+        if predictions_array.shape[0] == 0:
+            # Handle empty predictions
+            self.preds.append(numpy.zeros((1, 0), dtype=numpy.int32))
+            self.targets.append(gt_class_array.astype(numpy.int32))
+            return
+
+        # Extract topk predictions in desceding order
+        sorted_indices = numpy.argsort(-predictions_array[:, 1])
+        sorted_predictions = predictions_array[sorted_indices]
+        class_indices = sorted_predictions[:, 0].astype(numpy.int32)
+        k = min(self.topk, len(class_indices))
+        top_indices = class_indices[:k]
+
+        # Store for evaluation
+        self.preds.append(numpy.array([top_indices], dtype=numpy.int32))
+        self.targets.append(gt_class_array.astype(numpy.int32))
+
+    def get_stats(self) -> Dict:
+        """
+        Calculate and return classification metrics.
+        Returns:
+            Dictionary of metrics.
+        """
+        self.metrics.process(self.targets, self.preds)
+        self.seen = len(self.targets)
+        # Count images per class, skipping value for empty
+        if hasattr(self.metrics, "ap_class_index") and self.metrics.ap_class_index is not None:
+            self.images_per_class = numpy.zeros(len(self.metrics.ap_class_index), dtype=int)
+            for target in self.targets:
+                if len(target) > 0:
+                    for i, c in enumerate(self.metrics.ap_class_index):
+                        if c in target and not self._is_unknown(c):
+                            self.images_per_class[i] += 1
+        return self.metrics.results_dict
+
+    def print_results(self) -> None:
+        """ Print formatted classification results. """
+        if not hasattr(self.metrics, "keys") or not self.metrics.keys:
+            # No results to print
+            return
+        logger.info("")
+        logger.info(("%22s" + "%11s" * 3) % ("Class", "Images", "top1_acc", f"top{self.topk}_acc"))
+        pf = "%22s" + "%11i" + "%11.3g" * 2  # print format
+        logger.info(pf % ("all", self.seen, self.metrics.top1, self.metrics.topk))
+        # Print per-class metrics
+        if self.print_all and hasattr(self.metrics, "ap_class_index") and self.metrics.ap_class_index is not None:
+            for i, class_id in enumerate(self.metrics.ap_class_index):
+                if not self._is_unknown(class_id):
+                    class_name = IMAGENET[class_id]
+                    class_name = class_name[0:19] # truncate to fit in column
+                    img_count = self.images_per_class[i] if self.images_per_class is not None else 0
+                    logger.info(pf % (
+                        class_name,
+                        img_count,
+                        self.metrics.class_top1[class_id],
+                        self.metrics.class_topk[class_id]
+                    ))
+
+    def _predictions_to_array(self, image_results: Dict) -> numpy.ndarray:
+        """
+        Convert image predictions dict to a structured numpy array.
+        Args:
+            image_results: Dictionary of class predictions for an image.
+        Returns:
+            Numpy array of shape (N,2) containing [class_idx, score] rows.
+        """
+        if not image_results:
+            return numpy.zeros((0, 2), dtype=numpy.float32)
+        all_preds = []
+        for class_name, scores in image_results.items():
+            score = scores[0]  # take the first score
+            class_idx = self._parse_class_id(class_name)
+            all_preds.append([class_idx, score])
+        return numpy.array(all_preds, dtype=numpy.float32)
+
+    def _ground_truth_to_array(self, gt_class: Optional[str]) -> numpy.ndarray:
+        """
+        Convert ground truth class string to a numpy array.
+        Args:
+            gt_class: Ground truth class string or None.
+        Returns:
+            Numpy array containing the ground truth class index.
+        """
+        class_idx = self._parse_class_id(gt_class)
+        return numpy.array([class_idx], dtype=numpy.int64)
+
+    def _parse_class_id(self, class_name_or_id) -> int:
+        """
+        Parse class ID from various formats (n00000000, string ID, or numeric ID)
+        Args:
+            class_name_or_id: Class identifier in string or numeric format
+        Returns:
+            int: Numeric class ID
+        """
+        if class_name_or_id is None:
+            return self.UNKNOWN_CLASS_ID
+        if isinstance(class_name_or_id, int):
+            return class_name_or_id
+        if isinstance(class_name_or_id, str):
+            if class_name_or_id.startswith('n'):
+                return int(class_name_or_id[1:])
+            return int(class_name_or_id)
+        raise ValueError(f"Unsupported class identifier format: {class_name_or_id}")
+
+    def _is_unknown(self, class_id: int) -> bool:
+        """
+        Check if a class ID represents an unknown class
+
+        Note:
+            Classes are considered "unknown" if they are either:
+            1. Valid ImageNet classes that don't appear in the ImageNet-A or ImageNet-O subsets
+            2. Not legitimate ImageNet classes at all
+        Args:
+            class_id: Numeric class ID
+        Returns:
+            bool: True if this is the sentinel value for empty class
+        """
+        return class_id == self.UNKNOWN_CLASS_ID or class_id not in IMAGENET.keys()
+
+
+class EvalKaNN_ObjDetect(EvalKaNN_Base):
+    """
+    A class extending the EvalKaNN_Base class for validating results from a detection task.
+
+    Attributes:
+        nt_per_class (dict): a dict containing the no. of instances per class over all images.
+        nt_per_image (dict): a dict with no. of images where a class appears at least once.
+        iouv (numpy.ndarray): implementation of the iouv attr, from 0.5 to 0.95 in steps of 0.05.
+        niou (int): number of elements of the iouv array.
+        metrics (Metrics): an object that does the actual computation of the metrics.
+        seen (int): implementation of the seen attr, now a proper int.
+    """
+
+    def __init__(self, id_to_names, print_all=False):
+        EvalKaNN_Base.__init__(self, id_to_names)
+        self.nt_per_class = None
+        self.nt_per_image = None
+        self.iouv = numpy.linspace(0.5, 0.95, 10)
+        self.niou = len(self.iouv)
+        self.metrics = ObjDetectMetrics()
+        self.print_all = print_all
+        self.seen = 0
+
+    def init_metrics(self):
+        """
+        Initialize metrics with class information.
+        """
+        self.metrics.names = self.id_to_names
+        self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[], target_img=[])
+
+    def get_precision(self, detections, gt_bboxes, gt_cls):
+        """
+        Return correct prediction matrix.
+
+        Args:
+            detections (numpy.ndarray): Array of shape (N, 6) representing detections where each detection is
+                (x1, y1, x2, y2, conf, class).
+            gt_bboxes (numpy.ndarray): Array of shape (M, 4) representing ground-truth bounding box coordinates.
+            gt_cls (numpy.ndarray): Array of shape (M,) representing target class indices.
+
+        Returns:
+            numpy.ndarray: Correct prediction matrix of shape (N, 10) for 10 IoU levels.
+        """
+        iou = box_iou(gt_bboxes, detections[:, :4])  # Assuming box_iou is implemented with numpy
+        return self.match_predictions(detections[:, 5], gt_cls, iou)
+
+    def fuse_and_arrayize(self, results, references):
+        """
+        Fuses dictionaries by entry (since both dicts' keys are the same: images' id),
+        then converts them to evaluation-ready arrays.
+
+        Args:
+            results: Dict mapping image_id to predictions {img_id: {class: [(score, bbox), ...], ...}}
+            references: Dict mapping image_id to ground truth {img_id: {class: [bbox, ...], ...}}
+
+        Returns:
+            dict: {image_id: (detections, gt_bboxes, gt_cls)} where:
+                - detections: numpy.ndarray (N,6) [x1, y1, x2, y2, conf, cls_idx]
+                - gt_bboxes: numpy.ndarray (M,4) [x1, y1, x2, y2]
+                - gt_cls: numpy.ndarray (M,) class indices
+        """
+        arrays_by_img = {}
+        all_image_ids = set(results.keys()) | set(references.keys())
+        for image_id in all_image_ids:
+            # Process detections
+            detections = []
+            if image_id in results:
+                for class_name, preds in results[image_id].items():
+                    class_idx = self.names_to_id[class_name]
+                    if class_idx is None:
+                        continue  # Skip unknown classes
+                    for score, bbox in preds:
+                        detections.append([*bbox, score, class_idx])
+            # Convert to array (empty array if no detections)
+            detections_array = (
+                numpy.array(detections, dtype=numpy.float32)
+                  if detections else numpy.zeros((0, 6), dtype=numpy.float32)
+            )
+            # Process ground truth
+            gt_bboxes = []
+            gt_cls = []
+            if image_id in references:
+                for class_name, bboxes in references[image_id].items():
+                    class_idx = self.names_to_id[class_name]
+                    if class_idx is None:
+                        continue  # Skip unknown classes
+                    for bbox in bboxes:
+                        gt_bboxes.append(bbox)
+                        gt_cls.append(class_idx)
+            # Convert to arrays
+            gt_bboxes_array = (
+                numpy.array(gt_bboxes, dtype=numpy.float32)
+                if gt_bboxes else numpy.zeros((0, 4), dtype=numpy.float32)
+            )
+            gt_cls_array = (
+                numpy.array(gt_cls, dtype=numpy.int64)
+                if gt_cls else numpy.zeros(0, dtype=numpy.int64)
+            )
+            arrays_by_img[image_id] = (detections_array, gt_bboxes_array, gt_cls_array)
+        return arrays_by_img
+
+    def update_metrics(self, pred_gt_arrays):
+        """
+        Update the stats dictionary by processing the detections and ground truth arrays.
+
+        Args:
+            pred_gt_arrays (tuple): a tuple of three numpy.ndarrays containing information
+                about detections and ground truth.
+        """
+        detections, gt_bboxes, gt_cls = pred_gt_arrays
+        self.seen += 1
+        npr = len(detections)  # Number of predictions
+        # Initialize stat dictionary for this image
+        stat = dict(
+            conf=numpy.zeros(0),
+            pred_cls=numpy.zeros(0),
+            tp=numpy.zeros((npr, self.niou), dtype=bool),
+        )
+        nl = len(gt_cls)  # Number of ground truth labels
+        # Store target class information
+        stat["target_cls"] = gt_cls
+        stat["target_img"] = numpy.unique(gt_cls) if nl > 0 else numpy.zeros(0)
+        # If no predictions but we have ground truth, record missed detections
+        if npr == 0:
+            if nl:
+                for k in self.stats.keys():
+                    self.stats[k].append(stat[k])
+            return
+        # Store confidence and predicted class
+        stat["conf"] = detections[:, 4]
+        stat["pred_cls"] = detections[:, 5]
+        # Evaluate predictions against ground truth
+        if nl:
+            stat["tp"] = self.get_precision(detections, gt_bboxes, gt_cls)
+        # Update stats dictionary
+        for k in self.stats.keys():
+            self.stats[k].append(stat[k])
+
+    def match_predictions(self, pred_classes, true_classes, iou):
+        """
+        Matches predictions to ground truth objects (pred_classes, true_classes) using IoU.
+
+        Args:
+            pred_classes (numpy.ndarray): Predicted class indices of shape(N,).
+            true_classes (numpy.ndarray): Target class indices of shape(M,).
+            iou (numpy.ndarray): An NxM array containing the pairwise IoU values for predictions and ground of truth
+            use_scipy (bool): Whether to use scipy for matching (more precise).
+
+        Returns:
+            (numpy.ndarray): Correct array of shape(N,10) for 10 IoU thresholds.
+        """
+        # Dx10 matrix, where D - detections, 10 - IoU thresholds
+        correct = numpy.zeros((pred_classes.shape[0], self.iouv.shape[0])).astype(bool)
+        # LxD matrix where L - labels (rows), D - detections (columns)
+        correct_class = true_classes[:, None] == pred_classes
+        iou = iou * correct_class  # zero out the wrong classes
+        for i, threshold in enumerate(self.iouv.tolist()):
+            matches = numpy.nonzero(iou >= threshold)  # IoU > threshold and classes match
+            matches = numpy.array(matches).T
+            if matches.shape[0]:
+                if matches.shape[0] > 1:
+                    matches = matches[iou[matches[:, 0], matches[:, 1]].argsort()[::-1]]
+                    matches = matches[numpy.unique(matches[:, 1], return_index=True)[1]]
+                    matches = matches[numpy.unique(matches[:, 0], return_index=True)[1]]
+                correct[matches[:, 1].astype(int), i] = True
+        tp = correct.astype(bool)
+        return tp
+
+    def get_stats(self):
+        """
+        Returns metrics statistics and results dictionary.
+        """
+        # Convert lists of arrays to single concatenated arrays
+        stats = {}
+        for k, v in self.stats.items():
+            if v:  # Check if list is not empty
+                stats[k] = numpy.concatenate(v)
+            else:
+                stats[k] = numpy.array([])
+        self.nt_per_class = numpy.bincount(
+            stats["target_cls"].astype(int), minlength=self.nc
+        )
+        self.nt_per_image = numpy.bincount(
+            stats["target_img"].astype(int), minlength=self.nc
+        )
+        stats.pop("target_img", None)
+        if len(stats) and "tp" in stats and stats["tp"].any():
+            self.metrics.process(**stats)
+        return self.metrics.results_dict
+
+    def print_results(self):
+        """
+        Print validation metrics per class.
+        """
+
+        if not hasattr(self.metrics, "keys") or not self.metrics.keys:
+            logger.error("Metrics not properly initialized or processed")
+            return
+
+        # Print column headers
+        logger.info("")
+        logger.info(("%22s" + "%11s" * 7) % ("Class", "Images", "Instances", "Prec", "Recall", "F1-score", "mAP50", "mAP50-95"))
+        pf = "%22s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys)  # print format
+
+        # Print overall results
+        mean_results = self.metrics.mean_results()
+        if all(r is not None for r in mean_results):
+            logger.info(pf % ("all", self.seen, int(self.nt_per_class.sum()), *mean_results))
+        else:
+            logger.warning("Some metrics returned None values")
+        if self.nt_per_class.sum() == 0:
+            logger.warning("No labels found, cannot compute metrics without labels")
+            return
+
+        # Print per-class results
+        if self.print_all and hasattr(self.metrics, "ap_class_index") and self.metrics.ap_class_index is not None:
+            for i, c in enumerate(self.metrics.ap_class_index):
+                if c < len(self.id_to_names):  # Check valid index
+                    class_name = self.id_to_names[c]
+                    class_results = self.metrics.class_result(i)
+                    if all(r is not None for r in class_results):
+                        logger.info(
+                            pf % (class_name, (int(self.nt_per_image[c]) if c < len(self.nt_per_image) else 0),
+                                (int(self.nt_per_class[c]) if c < len(self.nt_per_class) else 0),
+                                *class_results)
+                        )
+        logger.info("")
+
 
 class Metrics(object):
     """
