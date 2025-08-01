@@ -617,6 +617,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         required=True,
+        choices=["coco8", "coco128", "coco", "imagenet-o"],
         help="specify the dataset to compute metrics on",
     )
     parser.add_argument(
